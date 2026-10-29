@@ -298,9 +298,32 @@ export async function generateDocxFromTemplate(
         const file = zip.file(hPath);
         if (file) {
           let hXml = normalizePlaceholdersInXml(file.asText());
+
+          // A) Prevent floating logo collision: Replace tight text wrapping on floating drawings with wrapNone
+          hXml = hXml.replace(/<wp:wrapTight[^>]*>[\s\S]*?<\/wp:wrapTight>/gi, '<wp:wrapNone/>');
+
+          // B) Remove colliding trailing tab right after candidate name or role
+          hXml = hXml.replace(
+            /(<w:t[^>]*>\{\{\s*(?:candidate_name|name|full_name|role|target_role)[\s\S]*?<\/w:t><\/w:r>)\s*<w:r\b[^>]*>(?:<w:rPr>[\s\S]*?<\/w:rPr>)?\s*<w:tab\/>\s*<\/w:r>/gi,
+            '$1'
+          );
+
+          // C) Smart font scaling: When header value has 3+ words or is long (>18 chars),
+          // scale down oversized 22pt (sz="44") font to elegant 17pt (sz="34") so it fits cleanly
+          const roleUpper = targetRole.toUpperCase();
+          const nameUpper = candidateName.toUpperCase();
+          const isRoleHeader = /\{\{\s*(role|target_role|candidate_role|job_title|title|designation)\s*\}\}/i.test(hXml);
+          const activeHeaderValue = isRoleHeader ? roleUpper : nameUpper;
+          const wordCount = activeHeaderValue.trim().split(/\s+/).length;
+
+          if (wordCount >= 3 || activeHeaderValue.length > 18) {
+            hXml = hXml.replace(/<w:sz w:val="(?:44|42|40|38|36)"\/>/gi, '<w:sz w:val="34"/>');
+            hXml = hXml.replace(/<w:szCs w:val="(?:44|42|40|38|36)"\/>/gi, '<w:szCs w:val="34"/>');
+          }
+
           // Dynamically replace {{ Role }} or {{ candidate_name }} in header
-          hXml = hXml.replace(ROLE_REGEX, () => escapeXml(targetRole.toUpperCase()));
-          hXml = hXml.replace(NAME_REGEX, () => escapeXml(candidateName.toUpperCase()));
+          hXml = hXml.replace(ROLE_REGEX, () => escapeXml(roleUpper));
+          hXml = hXml.replace(NAME_REGEX, () => escapeXml(nameUpper));
           zip.file(hPath, hXml);
         }
       }
