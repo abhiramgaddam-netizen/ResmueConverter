@@ -52,39 +52,40 @@ interface CandidateFileItem {
 }
 
 const TECNICS_STANDARD_SPEC = `
-TECNICS INTEGRATION TECHNOLOGIES
-EXECUTIVE CONSULTANT PROFILE
+TECNICS INTEGRATION TECHNOLOGIES - STANDARD CONSULTANT PROFILE
 
-NAME: [Candidate Full Name]
-ROLE: [Target Role / Senior Consultant]
-LOCATION: [City, State/Country] | CONTACT: [Email Address] | [Phone Number] | [LinkedIn Profile]
+{{ candidate_name }}
 
-PROFESSIONAL SUMMARY
-Results-driven technology consultant with extensive experience delivering mission-critical enterprise solutions. Proven track record in modernizing legacy architectures, leading high-velocity engineering deliverables, and aligning digital transformation initiatives with strategic client goals.
+Professional Summary:
+• Extensive experience in enterprise solutions, cloud/infrastructure, and platform engineering.
+• Proven track record across architecture, migrations, and high-performance system implementations.
 
-CORE COMPETENCIES & TECHNICAL PROFICIENCIES
-- Architecture & Frameworks: Enterprise Cloud Architecture, Microservices, API Engineering
-- Technologies & Languages: TypeScript, JavaScript, Python, Java, React, Node.js, Next.js, SQL
-- Cloud & Infrastructure: AWS, Azure, GCP, Docker, Kubernetes, CI/CD Automation
-- Enterprise Integration: REST APIs, GraphQL, Kafka, Enterprise Service Bus, Database Systems
+[Specialized Skill Highlights / Migration Projects - if applicable]
+• Core domain highlights, migration methodologies, and specialized technical execution.
 
-PROFESSIONAL EXPERIENCE
-Client Enterprise Engagement • Location
-Senior Consultant / Technical Lead (Start Date - End Date / Present)
-- Spearheaded the design and delivery of scalable enterprise services, reducing system latency by 40%.
-- Collaborated with executive client stakeholders to define architecture requirements and manage deployments.
-- Implemented robust automated verification pipelines, boosting release velocity by 3x.
+Education:
+• Degree and institution (e.g., MCA from Osmania University).
 
-Prior Client Project / Technology Organization • Location
-Software Consultant / Engineer (Start Date - End Date)
-- Developed and maintained high-throughput client web applications serving large enterprise user bases.
-- Optimized query patterns and distributed data caching, lowering infrastructure operational overhead by 25%.
+Technical Skills:
+Operating Systems:    Linux, Windows Server, Unix
+Software / Stacks:    Enterprise Applications, Frameworks, Cloud Platforms
+Database:             Oracle, SQL Server, PostgreSQL, HANA
+Tools / Cloud:        AWS, Azure, Docker, Kubernetes, CI/CD
 
-EDUCATION & CREDENTIALS
-- Bachelor of Technology / Bachelor of Science in Computer Science & Engineering
+Awards and Achievements:
+• Client recognitions, project appreciations, and excellence awards.
 
-PROFESSIONAL CERTIFICATIONS
-- Enterprise Cloud Solutions Architect
+Professional Experience:
+Project 1
+Client:               Enterprise Client Name
+Role:                 Lead Technical Consultant
+Duration:             September 2021 to till date
+Environment:          Operating Systems, Databases, Technologies and Tools
+Working Environment:
+• Architecture design, deployment topology, and core components.
+Responsibilities:
+• Designed, configured, and deployed high-availability enterprise environments.
+• Collaborated with global client leadership to ensure zero-downtime cutovers.
 `.trim();
 
 export default function TecnicsResumeStudio() {

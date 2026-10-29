@@ -1,99 +1,121 @@
 import { ResumeData } from '@/types/resume';
 
-const TECNICS_STANDARD_BENCHMARK = `
-TECNICS INTEGRATION TECHNOLOGIES
-EXECUTIVE CONSULTANT PROFILE
+export const TECNICS_STANDARD_BENCHMARK = `
+TECNICS INTEGRATION TECHNOLOGIES - STANDARD CONSULTANT PROFILE
 
-SECTIONS REQUIRED:
-1. Full Name & Target Role
-2. Contact Information (Email, Phone, Location, LinkedIn)
-3. Professional Summary (Detailed 2-5 sentence executive overview)
-4. Technical Skills & Competencies (Grouped by category: Languages, Frameworks, Cloud, Databases, Tools)
-5. Professional Experience (Chronological order with Company, Job Title, Dates, Location, and detailed achievement bullet points)
-6. Key Projects & Engagements (Project title, technologies used, role, and achievements)
-7. Education & Academic Credentials (Degree, Institution, Dates/Year)
-8. Professional Certifications
+REQUIRED SECTION ORDER & STRUCTURE:
+1. Professional Summary: Bullet list of core experience, years, environments, and OS/cloud familiarity.
+2. Specialized Skill Sections (if present in source): Capture domain-specific groupings such as "Migration Projects", "SKILLS@SAP R/3", "Net Weaver Skills", "Hana Skills", or similar technical breakdowns right after Professional Summary.
+3. Education: Degree and University (e.g., "MCA from Osmania University.").
+4. Technical Skills: Categorized key-value lines (e.g., Operating Systems, SAP Software / Frameworks, Database, Cloud / Tools).
+5. Awards and Achievements: Bullet points of client appreciations, awards, and recognitions (if present).
+6. Professional Experience: Chronological projects labeled "Project 1", "Project 2", etc., each containing:
+   - Client
+   - Role
+   - Duration
+   - Environment (tech stack / versions / tools used in that project)
+   - Working Environment (optional bullet points if mentioned in source)
+   - Responsibilities (detailed bullet points of tasks and achievements)
 `;
 
-const RESUME_JSON_SCHEMA_EXAMPLE = {
-  fullName: "Candidate's Full Name",
-  targetRole: "Target Role or Professional Specialization",
-  contactInfo: {
-    email: "email@example.com",
-    phone: "+1 234 567 8900",
-    location: "City, State/Country",
-    linkedin: "linkedin.com/in/username",
-    github: "github.com/username"
+export const RESUME_JSON_SCHEMA = {
+  type: "OBJECT",
+  properties: {
+    fullName: { type: "STRING" },
+    targetRole: { type: "STRING" },
+    professionalSummary: {
+      type: "ARRAY",
+      items: { type: "STRING" },
+      description: "Bullet points summarizing overall experience"
+    },
+    specializedSkills: {
+      type: "ARRAY",
+      description: "Domain-specific skill sections or migration project highlights that appear near the top of the resume (e.g., 'Migration Projects', 'SKILLS@SAP R/3', 'Net Weaver Skills', 'Hana Skills')",
+      items: {
+        type: "OBJECT",
+        properties: {
+          title: { type: "STRING" },
+          bullets: { type: "ARRAY", items: { type: "STRING" } }
+        },
+        required: ["title", "bullets"]
+      }
+    },
+    education: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          degree: { type: "STRING", description: "Full education line, e.g., 'MCA from Osmania University' or degree name" },
+          institution: { type: "STRING" },
+          endDate: { type: "STRING" }
+        },
+        required: ["degree"]
+      }
+    },
+    skills: {
+      type: "ARRAY",
+      description: "Grouped technical skills (e.g., Operating Systems, SAP Software, Database, Programming Languages)",
+      items: {
+        type: "OBJECT",
+        properties: {
+          category: { type: "STRING" },
+          skills: { type: "ARRAY", items: { type: "STRING" } }
+        },
+        required: ["category", "skills"]
+      }
+    },
+    awards: {
+      type: "ARRAY",
+      items: { type: "STRING" },
+      description: "Awards, client appreciations, and achievements"
+    },
+    experience: {
+      type: "ARRAY",
+      description: "Professional Experience broken down by Project 1, Project 2, etc.",
+      items: {
+        type: "OBJECT",
+        properties: {
+          projectNumber: { type: "STRING", description: "e.g., 'Project 1', 'Project 2'" },
+          company: { type: "STRING", description: "Client or Employer Name" },
+          role: { type: "STRING", description: "Role or Job Title" },
+          startDate: { type: "STRING", description: "Full duration string, e.g., 'September 2015 to till date'" },
+          environment: { type: "STRING", description: "Technologies, OS, DBs, and tools used in the project" },
+          workingEnvironment: {
+            type: "ARRAY",
+            items: { type: "STRING" },
+            description: "Bullets describing the Working Environment, if explicitly mentioned"
+          },
+          bullets: {
+            type: "ARRAY",
+            items: { type: "STRING" },
+            description: "All Responsibilities bullet points"
+          }
+        },
+        required: ["projectNumber", "company", "role", "startDate", "bullets"]
+      }
+    },
+    certifications: {
+      type: "ARRAY",
+      items: { type: "STRING" }
+    }
   },
-  professionalSummary: "A comprehensive executive professional summary detailing years of experience, core domains, and achievements.",
-  skills: [
-    {
-      category: "Operating Systems / Platforms",
-      skills: ["Linux", "Windows Server", "Unix"]
-    },
-    {
-      category: "Technologies & Frameworks",
-      skills: ["SAP NetWeaver", "S4HANA", "React", "Node.js", "Python"]
-    },
-    {
-      category: "Databases & Cloud",
-      skills: ["Oracle", "HANA", "AWS", "Azure"]
-    }
-  ],
-  experience: [
-    {
-      company: "Enterprise Client or Employer Name",
-      role: "Job Title / Consultant Role",
-      location: "City, State",
-      startDate: "2020",
-      endDate: "Present",
-      bullets: [
-        "Led migration and modernization initiatives with verified metrics.",
-        "Architected and deployed enterprise solutions."
-      ]
-    }
-  ],
-  projects: [
-    {
-      name: "Project Name",
-      technologies: "Technologies used",
-      description: "Project scope and deliverables.",
-      bullets: ["Accomplishment 1", "Accomplishment 2"]
-    }
-  ],
-  education: [
-    {
-      institution: "University / Institute Name",
-      degree: "Degree / Qualification Name",
-      fieldOfStudy: "Field of Study",
-      startDate: "2016",
-      endDate: "2020"
-    }
-  ],
-  certifications: [
-    "AWS Certified Solutions Architect",
-    "SAP Certified Technology Associate"
-  ]
+  required: ["fullName", "targetRole", "professionalSummary", "education", "skills", "experience"]
 };
 
-const FREE_FLASH_MODELS = [
+export const FREE_FLASH_MODELS = [
   'gemini-3.5-flash',
+  'gemini-flash-latest',
+  'gemini-3.5-flash-lite',
   'gemini-flash-lite-latest',
-  'gemini-flash-latest'
+  'gemini-3.8-flash'
 ];
 
-function sanitizeApiKey(key: string): string {
+export function sanitizeApiKey(key: string): string {
   return key.trim().replace(/^['"]|['"]$/g, '').trim();
 }
 
-/**
- * Extracts a clean candidate name from a filename if the resume body lacks one.
- * e.g., "Shekar SAP BASIS Consultant_Tecnics.docx" -> "Shekar"
- * "Vijaya Krishnan G_Standardized.docx" -> "Vijaya Krishnan G"
- */
 export function extractNameFromFilename(filename: string): string {
-  let clean = filename.replace(/\.[^/.]+$/, ''); // remove extension
-  // remove common resume keywords
+  let clean = filename.replace(/\.[^/.]+$/, '');
   clean = clean.replace(/(_|\s|-)?(resume|cv|tecnics|standardized|profile|consultant|specialist|developer|engineer|lead|senior|sap|basis).*$/i, '');
   clean = clean.replace(/[_.-]/g, ' ').trim();
   return clean || 'Candidate';
@@ -115,7 +137,7 @@ export async function resolveAvailableModel(rawKey: string): Promise<{ name: str
     }
   }
 
-  return { name: 'gemini-3.5-flash', apiVersion: 'v1beta' };
+  return { name: 'gemini-3.8-flash', apiVersion: 'v1beta' };
 }
 
 export function scrubPersonalInfo(text: string): string {
@@ -145,205 +167,108 @@ export async function convertCandidateResume({
   removePersonalInfo?: boolean;
 }): Promise<ResumeData> {
   const rawKey = apiKey || process.env.GEMINI_API_KEY;
-
   if (!rawKey) {
-    throw new Error(
-      'Missing Authorization Key. Please configure your key in Settings or set GEMINI_API_KEY in your environment.'
-    );
+    throw new Error('Missing Gemini API Key.');
   }
 
   const activeKey = sanitizeApiKey(rawKey);
-
-  // If the targetFormatText is a placeholder template (like {{ candidate_name }} {{ content }}),
-  // supplement it with the complete standard corporate section guidelines so the AI extracts everything!
-  let effectiveBenchmark = targetFormatText;
-  if (
-    effectiveBenchmark.includes('{{') ||
-    effectiveBenchmark.trim().length < 80
-  ) {
-    effectiveBenchmark = `${TECNICS_STANDARD_BENCHMARK}\n\nTEMPLATE SPECIFICATION:\n${effectiveBenchmark}`;
-  }
-
-  const inferredName = filename ? extractNameFromFilename(filename) : '';
-
-  const privacyRule = removePersonalInfo
-    ? '6. PRIVACY & ANONYMIZATION: The user explicitly requires all personal contact details (email, phone number, address/location, LinkedIn, GitHub, portfolio) to be REMOVED. Leave contactInfo completely empty: {}. Do not include personal phone numbers, emails, addresses, or profile URLs anywhere in the profile.'
-    : '';
+  const inferredName = filename ? extractNameFromFilename(filename) : 'Candidate';
 
   const systemInstruction = `
 You are an expert Corporate Resume Specialist at Tecnics Integration Technologies Private Limited.
-Your task is to thoroughly analyze the candidate's resume and extract ALL skills, work experiences, projects, education, and achievements into structured JSON.
+Convert the candidate's source resume into the exact Tecnics Standard Consultant format.
 
-CRITICAL INSTRUCTIONS:
-1. FACTUAL ACCURACY: Extract real facts from the candidate's resume. Do not invent false experience.
-2. FULL EXTRACTION: Never omit the candidate's professional summary, skills, work history, or education. If the candidate resume has content, you MUST populate every section.
-3. CANDIDATE NAME: Identify the candidate's full name. If the resume does not explicitly state a name, use the inferred name: "${inferredName}".
-4. SKILLS GROUPING: Group skills by category (e.g., Operating Systems, Databases, Frameworks, Cloud, Tools).
-5. VALID JSON ONLY: Return strictly valid JSON adhering to the schema. Do not wrap in markdown or add conversational text.
-${privacyRule}
+CRITICAL RULES:
+1. DO NOT DROP SECTIONS: If the candidate has specialized skill sections (like "Migration Projects", "SKILLS@SAP R/3", "Net Weaver Skills", "Hana Skills", etc.), extract ALL of them into 'specializedSkills'.
+2. PRESERVE EVERY BULLET: Never summarize or shorten responsibility bullets. Keep all technical details.
+3. PROJECT FORMAT: Every work experience or project entry must map to Project 1, Project 2, etc., capturing Client ('company'), Role ('role'), Duration ('startDate'), Environment ('environment'), Working Environment ('workingEnvironment' if present), and Responsibilities ('bullets').
+4. CANDIDATE NAME: Extract the candidate's real name, or fallback to "${inferredName}".
+5. ZERO FABRICATION: Only extract facts present in the candidate's source text.
+${removePersonalInfo ? '6. PRIVACY & ANONYMIZATION: The user explicitly requires personal contact details (phone numbers, emails, addresses, personal URLs) to be omitted.' : ''}
 `;
 
-  const prompt = `
-TARGET CORPORATE BENCHMARK:
-\"\"\"
-${effectiveBenchmark.slice(0, 10000)}
-\"\"\"
+  const userPrompt = `
+TARGET BENCHMARK FORMAT:
+"""
+${TECNICS_STANDARD_BENCHMARK}
+"""
 
-CANDIDATE SOURCE RESUME:
-(File Name: ${filename || 'resume.pdf'})
-\"\"\"
-${candidateText.slice(0, 25000)}
-\"\"\"
-
-Extract and normalize the candidate's complete background into valid JSON matching this schema:
-${JSON.stringify(RESUME_JSON_SCHEMA_EXAMPLE, null, 2)}
+CANDIDATE SOURCE RESUME (Filename: ${filename || 'resume.docx'}):
+"""
+${candidateText.slice(0, 30000)}
+"""
 `;
 
   let lastError: any = null;
 
   for (const modelName of FREE_FLASH_MODELS) {
     try {
-      console.log(`Executing resume transformation via Free Tier model: ${modelName}`);
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${activeKey}`;
-
-      const requestPayload = {
-        contents: [
-          {
-            role: 'user',
-            parts: [{ text: `${systemInstruction}\n\n${prompt}` }],
-          },
-        ],
-        generationConfig: {
-          responseMimeType: 'application/json',
-          temperature: 0.1,
-        },
-      };
 
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestPayload),
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: systemInstruction }] },
+          contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+          generationConfig: {
+            responseMimeType: 'application/json',
+            responseSchema: RESUME_JSON_SCHEMA,
+            temperature: 0.1,
+          },
+        }),
+        signal: AbortSignal.timeout(25000),
       });
 
       const resData = await response.json();
-
       if (!response.ok || resData.error) {
-        const errorMsg = resData.error?.message || `HTTP ${response.status}: ${response.statusText}`;
-        console.warn(`Model ${modelName} returned error: ${errorMsg}. Trying next model...`);
-        lastError = new Error(errorMsg);
+        lastError = new Error(resData.error?.message || `HTTP ${response.status}`);
         continue;
       }
 
-      const rawCandidateText = resData.candidates?.[0]?.content?.parts?.[0]?.text;
+      const rawText = resData.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!rawText) continue;
 
-      if (!rawCandidateText) {
-        lastError = new Error('Empty response from transformation engine.');
-        continue;
+      const parsed = JSON.parse(rawText);
+
+      // Handle summary if returned as string or array
+      let summaryArr: string[] = [];
+      if (Array.isArray(parsed.professionalSummary)) {
+        summaryArr = parsed.professionalSummary.map((s: any) =>
+          removePersonalInfo ? scrubPersonalInfo(String(s)) : String(s)
+        );
+      } else if (typeof parsed.professionalSummary === 'string' && parsed.professionalSummary.trim()) {
+        const text = removePersonalInfo ? scrubPersonalInfo(parsed.professionalSummary) : parsed.professionalSummary;
+        summaryArr = text.split('\n').filter(Boolean);
       }
 
-      const cleaned = rawCandidateText
-        .trim()
-        .replace(/^```json\s*/i, '')
-        .replace(/^```\s*/i, '')
-        .replace(/```\s*$/i, '');
-
-      let parsed: any;
-      try {
-        parsed = JSON.parse(cleaned);
-      } catch (parseErr: any) {
-        const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          parsed = JSON.parse(jsonMatch[0]);
-        } else {
-          throw new Error(`Failed to parse AI output: ${parseErr.message}`);
-        }
-      }
-
-      // Robust normalization of all fields
-      const finalData: ResumeData = {
+      return {
         fullName:
-          (parsed.fullName && parsed.fullName.trim() !== '' && parsed.fullName !== 'Candidate Name')
+          parsed.fullName && parsed.fullName.trim() !== '' && parsed.fullName !== 'Candidate'
             ? parsed.fullName.trim()
-            : (inferredName || 'Candidate Profile'),
-        targetRole: parsed.targetRole || parsed.role || parsed.title || '',
-        contactInfo: removePersonalInfo ? {} : (parsed.contactInfo || parsed.contact || {}),
-        professionalSummary: removePersonalInfo
-          ? scrubPersonalInfo(parsed.professionalSummary || parsed.summary || parsed.profile || '')
-          : (parsed.professionalSummary || parsed.summary || parsed.profile || ''),
-        skills: normalizeSkills(parsed.skills),
-        experience: normalizeExperience(parsed.experience || parsed.workExperience || parsed.work_experience),
-        education: normalizeEducation(parsed.education || parsed.academics),
-        projects: parsed.projects || parsed.keyProjects || [],
-        certifications: normalizeCertifications(parsed.certifications || parsed.licenses),
+            : inferredName,
+        targetRole: parsed.targetRole || '',
+        contactInfo: removePersonalInfo ? {} : (parsed.contactInfo || {}),
+        professionalSummary: summaryArr,
+        specializedSkills: parsed.specializedSkills || [],
+        education: parsed.education || [],
+        skills: parsed.skills || [],
+        awards: parsed.awards || [],
+        experience: (parsed.experience || []).map((exp: any, idx: number) => ({
+          projectNumber: exp.projectNumber || `Project ${idx + 1}`,
+          company: exp.company || '',
+          role: exp.role || '',
+          startDate: exp.startDate || '',
+          environment: exp.environment || '',
+          workingEnvironment: exp.workingEnvironment || [],
+          bullets: exp.bullets || [],
+        })),
+        certifications: parsed.certifications || [],
       };
-
-      return finalData;
     } catch (err: any) {
       lastError = err;
     }
   }
 
-  throw lastError || new Error('Failed to transform resume with available models.');
-}
-
-function normalizeSkills(skills: any): any[] {
-  if (!skills) return [];
-  if (Array.isArray(skills)) {
-    // If array of strings ["Java", "Python"]
-    if (skills.length > 0 && typeof skills[0] === 'string') {
-      return [{ category: 'Core Technical Competencies', skills: skills as string[] }];
-    }
-    // If array of objects
-    return skills.map((item: any) => {
-      if (typeof item === 'string') return { category: 'Core', skills: [item] };
-      const cat = item.category || item.name || 'Technical Skills';
-      const items = Array.isArray(item.skills)
-        ? item.skills
-        : Array.isArray(item.items)
-        ? item.items
-        : typeof item.skills === 'string'
-        ? item.skills.split(',').map((s: string) => s.trim())
-        : [];
-      return { category: cat, skills: items };
-    });
-  }
-  return [];
-}
-
-function normalizeExperience(exp: any): any[] {
-  if (!exp || !Array.isArray(exp)) return [];
-  return exp.map((item: any) => ({
-    company: item.company || item.companyName || item.employer || item.organization || '',
-    role: item.role || item.title || item.jobTitle || item.position || 'Consultant',
-    location: item.location || '',
-    startDate: item.startDate || item.start || item.duration || '',
-    endDate: item.endDate || item.end || '',
-    bullets: Array.isArray(item.bullets)
-      ? item.bullets
-      : Array.isArray(item.responsibilities)
-      ? item.responsibilities
-      : typeof item.description === 'string'
-      ? item.description.split('\n').filter(Boolean)
-      : [],
-  }));
-}
-
-function normalizeEducation(edu: any): any[] {
-  if (!edu || !Array.isArray(edu)) return [];
-  return edu.map((item: any) => ({
-    institution: item.institution || item.school || item.university || item.college || '',
-    degree: item.degree || item.qualification || '',
-    fieldOfStudy: item.fieldOfStudy || item.major || '',
-    startDate: item.startDate || item.start || '',
-    endDate: item.endDate || item.end || item.year || item.graduationYear || '',
-  }));
-}
-
-function normalizeCertifications(certs: any): string[] {
-  if (!certs) return [];
-  if (Array.isArray(certs)) {
-    return certs.map((c: any) => (typeof c === 'string' ? c : c.name || String(c))).filter(Boolean);
-  }
-  if (typeof certs === 'string') return [certs];
-  return [];
+  throw lastError || new Error('Failed to transform resume.');
 }

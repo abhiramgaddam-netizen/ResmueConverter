@@ -6,7 +6,6 @@ import {
   Download,
   Copy,
   Check,
-  FileText,
   Printer,
 } from 'lucide-react';
 import { ResumeData } from '@/types/resume';
@@ -56,14 +55,16 @@ export default function ResumePreviewModal({
 
   if (!isOpen) return null;
 
+  const displayName = (data?.fullName || candidateName || 'Candidate Profile').trim();
+  const roleName = data?.targetRole;
+
   // Format full resume as structured plain text for copying
   const generateFormattedText = (): string => {
     if (!data) return extractedText || 'No resume data available.';
 
     const lines: string[] = [];
-    lines.push((data.fullName || candidateName).toUpperCase());
+    lines.push(displayName);
     lines.push('--------------------------------------------------');
-    if (data.targetRole) lines.push(data.targetRole);
 
     const contactParts: string[] = [];
     if (!removePersonalInfo) {
@@ -73,60 +74,97 @@ export default function ResumePreviewModal({
       if (data.contactInfo?.linkedin) contactParts.push(data.contactInfo.linkedin);
       if (data.contactInfo?.github) contactParts.push(data.contactInfo.github);
     }
-    if (contactParts.length > 0) lines.push(contactParts.join('   |   '));
-    lines.push('');
-
-    if (data.professionalSummary) {
-      lines.push('PROFESSIONAL SUMMARY');
-      lines.push(data.professionalSummary);
+    if (contactParts.length > 0) {
+      lines.push(contactParts.join('   |   '));
       lines.push('');
     }
 
-    if (data.skills && data.skills.length > 0) {
-      lines.push('TECHNICAL SKILLS & COMPETENCIES');
-      data.skills.forEach((cat) => {
-        lines.push(`${cat.category}: ${cat.skills.join(', ')}`);
-      });
+    // 1. Professional Summary
+    const summaryItems = Array.isArray(data.professionalSummary)
+      ? data.professionalSummary
+      : typeof data.professionalSummary === 'string' && data.professionalSummary.trim()
+      ? data.professionalSummary.split('\n').filter(Boolean)
+      : [];
+
+    if (summaryItems.length > 0) {
+      lines.push('Professional Summary:');
+      summaryItems.forEach((item) => lines.push(`•\t${item}`));
       lines.push('');
     }
 
-    if (data.experience && data.experience.length > 0) {
-      lines.push('PROFESSIONAL EXPERIENCE');
-      data.experience.forEach((exp) => {
-        lines.push(exp.role);
-        const meta = [exp.company, exp.location, [exp.startDate, exp.endDate].filter(Boolean).join(' - ')].filter(Boolean).join('  |  ');
-        if (meta) lines.push(meta);
-        exp.bullets.forEach((b) => lines.push(`•  ${b}`));
+    // Specialized Skills
+    if (data.specializedSkills && data.specializedSkills.length > 0) {
+      data.specializedSkills.forEach((g) => {
+        if (g.title) lines.push(g.title);
+        (g.bullets || []).forEach((b) => lines.push(`•\t${b}`));
         lines.push('');
       });
     }
 
-    if (data.projects && data.projects.length > 0) {
-      lines.push('KEY PROJECTS & ENGAGEMENTS');
-      data.projects.forEach((proj) => {
-        lines.push(`${proj.name} ${proj.technologies ? `(${proj.technologies})` : ''}`);
-        if (proj.description) lines.push(proj.description);
-        if (proj.bullets) proj.bullets.forEach((b) => lines.push(`•  ${b}`));
-        lines.push('');
-      });
-    }
-
+    // 2. Education
     if (data.education && data.education.length > 0) {
-      lines.push('EDUCATION & CREDENTIALS');
+      lines.push('Education:');
       data.education.forEach((edu) => {
-        const dates = [edu.startDate, edu.endDate].filter(Boolean).join(' - ');
-        lines.push(`${edu.institution}${dates ? `  (${dates})` : ''}`);
-        const degree = [edu.degree, edu.fieldOfStudy].filter(Boolean).join(' in ');
-        if (degree) lines.push(degree);
+        const line = [
+          edu.degree,
+          edu.fieldOfStudy ? `in ${edu.fieldOfStudy}` : '',
+          edu.institution ? `from ${edu.institution}` : '',
+          edu.endDate ? `(${edu.endDate})` : '',
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .trim();
+        if (line) lines.push(`•\t${line}`);
+      });
+      lines.push('');
+    }
+
+    // 3. Technical Skills
+    if (data.skills && data.skills.length > 0) {
+      lines.push('Technical Skills:');
+      data.skills.forEach((cat) => {
+        lines.push(`${cat.category}:\t${cat.skills.join(', ')}`);
+      });
+      lines.push('');
+    }
+
+    // 4. Awards and Achievements
+    if (data.awards && data.awards.length > 0) {
+      lines.push('Awards and Achievements:');
+      data.awards.forEach((award) => lines.push(`•\t${award}`));
+      lines.push('');
+    }
+
+    // 5. Professional Experience
+    if (data.experience && data.experience.length > 0) {
+      lines.push('Professional Experience:');
+      data.experience.forEach((exp, idx) => {
+        const projTitle = exp.projectNumber || `Project ${idx + 1}`;
+        lines.push(projTitle);
+        const duration = [exp.startDate, exp.endDate].filter(Boolean).join(' to ');
+        if (exp.company) lines.push(`Client:\t\t${exp.company}`);
+        if (exp.role) lines.push(`Role:\t\t${exp.role}`);
+        if (duration) lines.push(`Duration:\t${duration}`);
+        if (exp.environment) lines.push(`Environment:\t${exp.environment}`);
+
+        if (exp.workingEnvironment && exp.workingEnvironment.length > 0) {
+          lines.push('Working Environment:');
+          exp.workingEnvironment.forEach((we) => lines.push(`•\t${we}`));
+        }
+
+        if (exp.bullets && exp.bullets.length > 0) {
+          lines.push('Responsibilities:');
+          exp.bullets.forEach((b) => lines.push(`•\t${b}`));
+        }
         lines.push('');
       });
     }
 
+    // 6. Certifications
     if (data.certifications && data.certifications.length > 0) {
-      lines.push('PROFESSIONAL CERTIFICATIONS');
-      data.certifications.forEach((cert) => {
-        lines.push(`•  ${cert}`);
-      });
+      lines.push('Professional Certifications:');
+      data.certifications.forEach((cert) => lines.push(`•\t${cert}`));
+      lines.push('');
     }
 
     return lines.join('\n');
@@ -139,10 +177,7 @@ export default function ResumePreviewModal({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const displayName = (data?.fullName || candidateName || 'Candidate Profile').trim();
-  const roleName = data?.targetRole;
-
-  // Build Contact Items bar exactly like Word doc
+  // Build Contact Items bar
   const contactItems: string[] = [];
   if (!removePersonalInfo) {
     if (data?.contactInfo?.email) contactItems.push(data.contactInfo.email);
@@ -152,41 +187,37 @@ export default function ResumePreviewModal({
     if (data?.contactInfo?.github) contactItems.push(data.contactInfo.github);
   }
 
+  // Summary items
+  const summaryItems = Array.isArray(data?.professionalSummary)
+    ? data.professionalSummary
+    : typeof data?.professionalSummary === 'string' && data.professionalSummary.trim()
+    ? data.professionalSummary.split('\n').filter(Boolean)
+    : [];
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn"
       onClick={onClose}
     >
       <div
-        className="bg-slate-100 rounded-xl shadow-2xl border border-slate-300 w-full max-w-5xl h-[94vh] flex flex-col overflow-hidden text-slate-900"
+        className="bg-white rounded-xl shadow-2xl border border-slate-200 flex flex-col w-full max-w-5xl h-[94vh] overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Top Control Bar */}
-        <div className="px-5 py-3 border-b border-slate-200 bg-white flex items-center justify-between gap-3 flex-shrink-0">
-          <div className="flex items-center space-x-2.5 min-w-0">
-            <div className="w-8 h-8 rounded bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-700 flex-shrink-0">
-              <FileText className="w-4 h-4" />
-            </div>
+        {/* Modal Top Control Bar */}
+        <div className="flex items-center justify-between px-6 py-3.5 border-b border-slate-200 bg-white">
+          <div className="flex items-center space-x-3 min-w-0">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 flex-shrink-0 animate-pulse" />
             <div className="min-w-0">
-              <div className="flex items-center space-x-2">
-                <h3 className="text-sm font-bold text-slate-900 truncate">
-                  {displayName}
-                </h3>
-                <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 uppercase tracking-wide hidden sm:inline-block">
-                  Word Document Layout
-                </span>
-                {removePersonalInfo && (
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase tracking-wide hidden sm:inline-block">
-                    Personal Details Removed
-                  </span>
-                )}
-              </div>
-              <p className="text-[11px] text-slate-500 truncate">Source: {originalFilename}</p>
+              <h2 className="text-sm font-semibold text-slate-900 truncate">
+                {displayName}
+              </h2>
+              <p className="text-[11px] text-slate-500 truncate">
+                {originalFilename} &bull; Classic Tecnics Format
+              </p>
             </div>
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex items-center space-x-2 flex-shrink-0">
+          <div className="flex items-center space-x-2">
             {/* Copy Button */}
             <button
               onClick={handleCopy}
@@ -242,17 +273,17 @@ export default function ResumePreviewModal({
         {/* Modal Scrollable Canvas: Renders Exact Word Document Page Layout */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-slate-200/70 flex justify-center">
           <div
-            className="w-full max-w-[850px] bg-white border border-slate-300 shadow-xl rounded-xs p-10 sm:p-14 my-auto text-slate-900"
+            className="w-full max-w-[850px] bg-white border border-slate-300 shadow-xl rounded-xs p-10 sm:p-14 my-auto text-black"
             style={{
-              fontFamily: 'Calibri, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+              fontFamily: '"Times New Roman", Times, serif',
               minHeight: '1050px',
             }}
           >
-            {/* 1. EXACT WORD HEADER: Candidate Name or Role on Left + Official TECNICS Logo on Right */}
-            <div className="flex items-center justify-between pb-3 border-b border-slate-300">
+            {/* 1. EXACT WORD HEADER: Candidate Name on Left + Official TECNICS Logo on Right */}
+            <div className="flex items-center justify-between pb-2 border-b border-black">
               <div className="min-w-0 pr-4">
-                <h1 className="text-xl sm:text-2xl font-bold tracking-widest text-[#475569] uppercase truncate">
-                  {headerType === 'role' && roleName ? roleName.toUpperCase() : displayName.toUpperCase()}
+                <h1 className="text-xl sm:text-2xl font-bold text-black tracking-normal truncate">
+                  {headerType === 'role' && roleName ? roleName : displayName}
                 </h1>
               </div>
 
@@ -266,158 +297,227 @@ export default function ResumePreviewModal({
               </div>
             </div>
 
-            {/* 2. SUB-HEADER: Role (in Blue) + Single Line Contact Info */}
-            <div className="mt-4 mb-5">
-              {roleName && (
-                <div className="text-[#0284c7] font-bold text-[15px] sm:text-base leading-tight mb-1">
-                  {roleName}
-                </div>
-              )}
+            {/* Sub-Header: Role + Contact info (if present) */}
+            {(roleName || contactItems.length > 0) && (
+              <div className="mt-3 mb-4">
+                {roleName && headerType !== 'role' && (
+                  <div className="font-bold text-base text-black mb-1">
+                    {roleName}
+                  </div>
+                )}
+                {contactItems.length > 0 && (
+                  <div className="text-xs text-slate-600">
+                    {contactItems.join('   |   ')}
+                  </div>
+                )}
+              </div>
+            )}
 
-              {contactItems.length > 0 && (
-                <div className="text-[11.5px] sm:text-xs text-[#64748b] leading-relaxed">
-                  {contactItems.join('   |   ')}
-                </div>
-              )}
-            </div>
-
-            {/* Fallback if no structured data available yet */}
+            {/* Fallback if no structured data available */}
             {!data && (
               <div className="mt-6">
-                <div className="text-[#0284c7] font-bold text-xs uppercase tracking-wider border-b border-[#0284c7] pb-0.5 mb-2">
-                  EXTRACTED SOURCE TEXT
+                <div className="font-bold text-sm text-black mb-2">
+                  EXTRACTED SOURCE TEXT:
                 </div>
-                <pre className="text-xs font-mono text-slate-700 whitespace-pre-wrap leading-relaxed">
+                <pre className="text-xs font-mono text-slate-800 whitespace-pre-wrap leading-relaxed">
                   {extractedText || 'No resume data available.'}
                 </pre>
               </div>
             )}
 
-            {/* 3. SECTION 1: PROFESSIONAL SUMMARY */}
-            {data?.professionalSummary && (
-              <div className="mb-5">
-                <div className="text-[#0284c7] font-bold text-xs sm:text-[13px] uppercase tracking-wider border-b border-[#0284c7] pb-0.5 mb-2">
-                  PROFESSIONAL SUMMARY
-                </div>
-                <p className="text-xs sm:text-[13px] text-[#334155] leading-relaxed text-justify">
-                  {data.professionalSummary}
-                </p>
-              </div>
-            )}
-
-            {/* 4. SECTION 2: TECHNICAL SKILLS & COMPETENCIES */}
-            {data?.skills && data.skills.length > 0 && (
-              <div className="mb-5">
-                <div className="text-[#0284c7] font-bold text-xs sm:text-[13px] uppercase tracking-wider border-b border-[#0284c7] pb-0.5 mb-2">
-                  TECHNICAL SKILLS &amp; COMPETENCIES
-                </div>
-                <div className="space-y-1">
-                  {data.skills.map((cat, idx) => (
-                    <div key={idx} className="text-xs sm:text-[13px] text-[#334155] leading-relaxed">
-                      <strong className="text-[#0f172a] font-bold">{cat.category}: </strong>
-                      <span>{cat.skills.join(', ')}</span>
-                    </div>
+            {/* SECTION 1: PROFESSIONAL SUMMARY */}
+            {summaryItems.length > 0 && (
+              <div className="mb-4">
+                <h2 className="text-[14px] font-bold text-black mb-1.5">
+                  Professional Summary:
+                </h2>
+                <ul className="space-y-1 pl-5 text-[12.5px] text-black">
+                  {summaryItems.map((item, idx) => (
+                    <li key={idx} className="list-disc leading-relaxed pl-1">
+                      {item}
+                    </li>
                   ))}
-                </div>
+                </ul>
               </div>
             )}
 
-            {/* 5. SECTION 3: PROFESSIONAL EXPERIENCE */}
-            {data?.experience && data.experience.length > 0 && (
-              <div className="mb-5">
-                <div className="text-[#0284c7] font-bold text-xs sm:text-[13px] uppercase tracking-wider border-b border-[#0284c7] pb-0.5 mb-2.5">
-                  PROFESSIONAL EXPERIENCE
-                </div>
-                <div className="space-y-4">
-                  {data.experience.map((exp, idx) => {
-                    const meta = [
-                      exp.company,
-                      exp.location,
-                      [exp.startDate, exp.endDate].filter(Boolean).join(' - '),
+            {/* SPECIALIZED SKILLS (Migration Projects, SKILLS@SAP R/3, etc.) */}
+            {data?.specializedSkills && data.specializedSkills.length > 0 && (
+              <div className="mb-4 space-y-3">
+                {data.specializedSkills.map((group, gIdx) => (
+                  <div key={gIdx}>
+                    <h3 className="text-[12.5px] font-bold text-black mb-1">
+                      {group.title}
+                    </h3>
+                    {group.bullets && group.bullets.length > 0 && (
+                      <ul className="space-y-1 pl-5 text-[12.5px] text-black">
+                        {group.bullets.map((b, bIdx) => (
+                          <li key={bIdx} className="list-disc leading-relaxed pl-1">
+                            {b}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* SECTION 2: EDUCATION */}
+            {data?.education && data.education.length > 0 && (
+              <div className="mb-4">
+                <h2 className="text-[14px] font-bold text-black mb-1.5">
+                  Education:
+                </h2>
+                <ul className="space-y-1 pl-5 text-[12.5px] text-black">
+                  {data.education.map((edu, idx) => {
+                    const line = [
+                      edu.degree,
+                      edu.fieldOfStudy ? `in ${edu.fieldOfStudy}` : '',
+                      edu.institution ? `from ${edu.institution}` : '',
+                      edu.endDate ? `(${edu.endDate})` : '',
                     ]
                       .filter(Boolean)
-                      .join('  |  ');
-
+                      .join(' ')
+                      .trim();
                     return (
-                      <div key={idx} className="leading-snug">
-                        <div className="text-xs sm:text-[13px] font-bold text-[#0f172a]">
-                          {exp.role}
-                        </div>
-                        {meta && (
-                          <div className="text-xs text-[#0284c7] italic mb-1">
-                            {meta}
-                          </div>
-                        )}
-                        {exp.bullets && exp.bullets.length > 0 && (
-                          <ul className="space-y-1 pl-4 text-xs sm:text-[13px] text-[#334155]">
-                            {exp.bullets.map((b, bIdx) => (
-                              <li key={bIdx} className="list-disc leading-relaxed pl-1 marker:text-[#0284c7]">
-                                {b}
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </div>
+                      <li key={idx} className="list-disc leading-relaxed pl-1">
+                        {line}
+                      </li>
                     );
                   })}
-                </div>
+                </ul>
               </div>
             )}
 
-            {/* 6. SECTION 4: KEY PROJECTS & ENGAGEMENTS */}
-            {data?.projects && data.projects.length > 0 && (
-              <div className="mb-5">
-                <div className="text-[#0284c7] font-bold text-xs sm:text-[13px] uppercase tracking-wider border-b border-[#0284c7] pb-0.5 mb-2.5">
-                  KEY PROJECTS &amp; ENGAGEMENTS
-                </div>
-                <div className="space-y-3.5">
-                  {data.projects.map((proj, idx) => (
-                    <div key={idx}>
-                      <div className="text-xs sm:text-[13px] text-[#0f172a]">
-                        <strong className="font-bold">{proj.name}</strong>
-                        {proj.technologies && (
-                          <span className="italic text-[#64748b]"> ({proj.technologies})</span>
-                        )}
-                      </div>
-                      {proj.description && (
-                        <p className="text-xs sm:text-[13px] text-[#334155] leading-relaxed mb-1 mt-0.5">
-                          {proj.description}
-                        </p>
-                      )}
-                      {proj.bullets && proj.bullets.length > 0 && (
-                        <ul className="space-y-1 pl-4 text-xs sm:text-[13px] text-[#334155]">
-                          {proj.bullets.map((b, bIdx) => (
-                            <li key={bIdx} className="list-disc leading-relaxed pl-1 marker:text-[#0284c7]">
-                              {b}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
+            {/* SECTION 3: TECHNICAL SKILLS */}
+            {data?.skills && data.skills.length > 0 && (
+              <div className="mb-4">
+                <h2 className="text-[14px] font-bold text-black mb-1.5">
+                  Technical Skills:
+                </h2>
+                <div className="space-y-1 text-[12.5px] text-black">
+                  {data.skills.map((cat, idx) => (
+                    <div key={idx} className="grid grid-cols-12 gap-2">
+                      <span className="col-span-4 sm:col-span-3 text-black font-normal">
+                        {cat.category.endsWith(':') ? cat.category : `${cat.category}:`}
+                      </span>
+                      <span className="col-span-8 sm:col-span-9 text-black">
+                        {cat.skills.join(', ')}
+                      </span>
                     </div>
                   ))}
                 </div>
               </div>
             )}
 
-            {/* 7. SECTION 5: EDUCATION & CREDENTIALS */}
-            {data?.education && data.education.length > 0 && (
-              <div className="mb-5">
-                <div className="text-[#0284c7] font-bold text-xs sm:text-[13px] uppercase tracking-wider border-b border-[#0284c7] pb-0.5 mb-2">
-                  EDUCATION &amp; CREDENTIALS
-                </div>
-                <div className="space-y-2">
-                  {data.education.map((edu, idx) => {
-                    const dates = [edu.startDate, edu.endDate].filter(Boolean).join(' - ');
-                    const degree = [edu.degree, edu.fieldOfStudy].filter(Boolean).join(' in ');
+            {/* SECTION 4: AWARDS AND ACHIEVEMENTS */}
+            {data?.awards && data.awards.length > 0 && (
+              <div className="mb-4">
+                <h2 className="text-[14px] font-bold text-black mb-1.5">
+                  Awards and Achievements:
+                </h2>
+                <ul className="space-y-1 pl-5 text-[12.5px] text-black">
+                  {data.awards.map((award, idx) => (
+                    <li key={idx} className="list-disc leading-relaxed pl-1">
+                      {award}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* SECTION 5: PROFESSIONAL EXPERIENCE */}
+            {data?.experience && data.experience.length > 0 && (
+              <div className="mb-4">
+                <h2 className="text-[14px] font-bold text-black mb-2">
+                  Professional Experience:
+                </h2>
+                <div className="space-y-4">
+                  {data.experience.map((exp, idx) => {
+                    const projTitle = exp.projectNumber || `Project ${idx + 1}`;
+                    const duration = [exp.startDate, exp.endDate].filter(Boolean).join(' to ');
 
                     return (
-                      <div key={idx} className="text-xs sm:text-[13px]">
-                        <div className="font-bold text-[#0f172a]">
-                          {edu.institution}
-                          {dates && <span className="font-normal text-[#64748b]">  ({dates})</span>}
+                      <div key={idx} className="text-[12.5px] text-black space-y-1.5">
+                        <div className="font-bold text-[13px] text-black">
+                          {projTitle}
                         </div>
-                        {degree && (
-                          <div className="text-[#334155]">{degree}</div>
+
+                        {/* Key-Value Block */}
+                        <div className="space-y-0.5">
+                          {exp.company && (
+                            <div className="grid grid-cols-12 gap-2">
+                              <span className="col-span-3 sm:col-span-2 font-bold text-black">
+                                Client:
+                              </span>
+                              <span className="col-span-9 sm:col-span-10 text-black">
+                                {exp.company}
+                              </span>
+                            </div>
+                          )}
+                          {exp.role && (
+                            <div className="grid grid-cols-12 gap-2">
+                              <span className="col-span-3 sm:col-span-2 font-bold text-black">
+                                Role:
+                              </span>
+                              <span className="col-span-9 sm:col-span-10 text-black">
+                                {exp.role}
+                              </span>
+                            </div>
+                          )}
+                          {duration && (
+                            <div className="grid grid-cols-12 gap-2">
+                              <span className="col-span-3 sm:col-span-2 font-bold text-black">
+                                Duration:
+                              </span>
+                              <span className="col-span-9 sm:col-span-10 text-black">
+                                {duration}
+                              </span>
+                            </div>
+                          )}
+                          {exp.environment && (
+                            <div className="grid grid-cols-12 gap-2">
+                              <span className="col-span-3 sm:col-span-2 font-bold text-black">
+                                Environment:
+                              </span>
+                              <span className="col-span-9 sm:col-span-10 text-black">
+                                {exp.environment}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Working Environment */}
+                        {exp.workingEnvironment && exp.workingEnvironment.length > 0 && (
+                          <div className="mt-2">
+                            <div className="font-bold text-black mb-1">
+                              Working Environment:
+                            </div>
+                            <ul className="space-y-1 pl-5 text-black">
+                              {exp.workingEnvironment.map((we, weIdx) => (
+                                <li key={weIdx} className="list-disc leading-relaxed pl-1">
+                                  {we}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {/* Responsibilities */}
+                        {exp.bullets && exp.bullets.length > 0 && (
+                          <div className="mt-2">
+                            <div className="font-bold text-black mb-1">
+                              Responsibilities:
+                            </div>
+                            <ul className="space-y-1 pl-5 text-black">
+                              {exp.bullets.map((b, bIdx) => (
+                                <li key={bIdx} className="list-disc leading-relaxed pl-1">
+                                  {b}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
                         )}
                       </div>
                     );
@@ -426,15 +526,15 @@ export default function ResumePreviewModal({
               </div>
             )}
 
-            {/* 8. SECTION 6: PROFESSIONAL CERTIFICATIONS */}
+            {/* SECTION 6: PROFESSIONAL CERTIFICATIONS */}
             {data?.certifications && data.certifications.length > 0 && (
-              <div className="mb-5">
-                <div className="text-[#0284c7] font-bold text-xs sm:text-[13px] uppercase tracking-wider border-b border-[#0284c7] pb-0.5 mb-2">
-                  PROFESSIONAL CERTIFICATIONS
-                </div>
-                <ul className="space-y-1 pl-4 text-xs sm:text-[13px] text-[#334155]">
+              <div className="mb-4">
+                <h2 className="text-[14px] font-bold text-black mb-1.5">
+                  Professional Certifications:
+                </h2>
+                <ul className="space-y-1 pl-5 text-[12.5px] text-black">
                   {data.certifications.map((cert, idx) => (
-                    <li key={idx} className="list-disc leading-relaxed pl-1 marker:text-[#0284c7]">
+                    <li key={idx} className="list-disc leading-relaxed pl-1">
                       {cert}
                     </li>
                   ))}
