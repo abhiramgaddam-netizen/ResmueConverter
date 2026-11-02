@@ -226,31 +226,23 @@ function normalizePlaceholdersInXml(xml: string): string {
   return xml.replace(/(<w:p\b[^>]*>)([\s\S]*?)(<\/w:p>)/gi, (fullP, pOpen, pInner, pClose) => {
     if (!pInner.includes('{')) return fullP;
 
-    // If an intact placeholder already exists in the inner XML, no need to touch the runs
-    if (/\{\{\s*[\w\s.-]+\s*\}\}/.test(pInner)) {
-      return fullP;
-    }
-
-    // Check if combined <w:t> text contains a placeholder
-    const matches = pInner.match(/<w:t\b[^>]*>[\s\S]*?<\/w:t>/gi) || [];
-    const fullText = (matches as string[])
-      .map((t) => t.replace(/<[^>]+>/g, ''))
-      .join('');
-
-    if (!/\{\{\s*[\w\s.-]+\s*\}\}/.test(fullText)) {
-      return fullP;
-    }
-
-    // Placeholder IS split across runs.
-    // Non-destructively merge adjacent text runs where the first run has an unclosed '{'
     let normalizedInner = pInner;
-    const mergeRunRegex = /(<w:t\b[^>]*>(?:(?!<\/w:t>)[\s\S])*?\{[^{}]*?)\s*<\/w:t>\s*<\/w:r>\s*(?:<w:proofErr[^>]*>\s*)*<w:r\b[^>]*>(?:\s*<w:rPr>[\s\S]*?<\/w:rPr>)?\s*<w:t\b[^>]*>/gi;
+    // Strip proofErr and gramErr tags so spell-check markers between placeholder chars don't split tokens
+    normalizedInner = normalizedInner.replace(/<w:(?:proofErr|gramErr)[^>]*>/gi, '');
+
+    // Non-destructively merge adjacent text runs where the first run has an unclosed '{'
+    const mergeRunRegex = /(<w:t\b[^>]*>(?:(?!<\/w:t>)[\s\S])*?\{+[^}]*?)\s*<\/w:t>\s*<\/w:r>\s*(?:<w:(?:proofErr|gramErr)[^>]*>\s*)*<w:r\b[^>]*>(?:\s*<w:rPr>[\s\S]*?<\/w:rPr>)?\s*<w:t\b[^>]*>/gi;
 
     let prev: string;
     do {
       prev = normalizedInner;
       normalizedInner = normalizedInner.replace(mergeRunRegex, '$1');
     } while (normalizedInner !== prev);
+
+    // Normalize any '{ {' into '{{' and '} }' into '}}' and common Word typo splits
+    normalizedInner = normalizedInner.replace(/\{\s+\{/g, '{{').replace(/\}\s+\}/g, '}}');
+    normalizedInner = normalizedInner.replace(/role\s+_title/gi, 'role_title');
+    normalizedInner = normalizedInner.replace(/client\s+_name/gi, 'client_name');
 
     return `${pOpen}${normalizedInner}${pClose}`;
   });
@@ -347,11 +339,20 @@ export function processGranularTemplate(
     : [];
 
   if (summaryItems.length > 0) {
-    const bulletsXml = summaryItems.map((b) => buildBulletParagraphXml(b)).join('');
-    xml = xml.replace(
-      /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:professional_summary_bullets|summary_bullets)\s*\}\}[\s\S]*?<\/w:p>/gi,
-      bulletsXml
-    );
+    const sumMatch = xml.match(/<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:professional_summary_bullets|summary_bullets)\s*\}\}[\s\S]*?<\/w:p>/i);
+    if (sumMatch) {
+      const sumProto = sumMatch[0];
+      const bulletsXml = summaryItems.map((b) => {
+        return sumProto.replace(/\{\{\s*(?:professional_summary_bullets|summary_bullets)\s*\}\}/gi, escapeXml(b));
+      }).join('');
+      xml = xml.replace(sumMatch[0], bulletsXml);
+    } else {
+      const bulletsXml = summaryItems.map((b) => buildBulletParagraphXml(b)).join('');
+      xml = xml.replace(
+        /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:professional_summary_bullets|summary_bullets)\s*\}\}[\s\S]*?<\/w:p>/gi,
+        bulletsXml
+      );
+    }
   } else {
     xml = xml.replace(
       /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?Professional\s+Summary:?[\s\S]*?<\/w:p>\s*<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:professional_summary_bullets|summary_bullets)\s*\}\}[\s\S]*?<\/w:p>/gi,
@@ -404,24 +405,44 @@ export function processGranularTemplate(
   // C) Education
   claimedSections.add('education');
   if (data.education && data.education.length > 0) {
-    const eduXml = data.education
-      .map((edu) => {
-        const line = [
-          edu.degree,
-          edu.fieldOfStudy ? `in ${edu.fieldOfStudy}` : '',
-          edu.institution ? `from ${edu.institution}` : '',
-          edu.endDate ? `(${edu.endDate})` : '',
-        ]
-          .filter(Boolean)
-          .join(' ')
-          .trim();
-        return buildBulletParagraphXml(line);
-      })
-      .join('');
-    xml = xml.replace(
-      /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:education_bullets|education_list)\s*\}\}[\s\S]*?<\/w:p>/gi,
-      eduXml
-    );
+    const eduMatch = xml.match(/<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:education_bullets|education_list)\s*\}\}[\s\S]*?<\/w:p>/i);
+    if (eduMatch) {
+      const eduProto = eduMatch[0];
+      const eduXml = data.education
+        .map((edu) => {
+          const line = [
+            edu.degree,
+            edu.fieldOfStudy ? `in ${edu.fieldOfStudy}` : '',
+            edu.institution ? `from ${edu.institution}` : '',
+            edu.endDate ? `(${edu.endDate})` : '',
+          ]
+            .filter(Boolean)
+            .join(' ')
+            .trim();
+          return eduProto.replace(/\{\{\s*(?:education_bullets|education_list)\s*\}\}/gi, escapeXml(line));
+        })
+        .join('');
+      xml = xml.replace(eduMatch[0], eduXml);
+    } else {
+      const eduXml = data.education
+        .map((edu) => {
+          const line = [
+            edu.degree,
+            edu.fieldOfStudy ? `in ${edu.fieldOfStudy}` : '',
+            edu.institution ? `from ${edu.institution}` : '',
+            edu.endDate ? `(${edu.endDate})` : '',
+          ]
+            .filter(Boolean)
+            .join(' ')
+            .trim();
+          return buildBulletParagraphXml(line);
+        })
+        .join('');
+      xml = xml.replace(
+        /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:education_bullets|education_list)\s*\}\}[\s\S]*?<\/w:p>/gi,
+        eduXml
+      );
+    }
   } else {
     xml = xml.replace(
       /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?Education:?[\s\S]*?<\/w:p>\s*<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:education_bullets|education_list)\s*\}\}[\s\S]*?<\/w:p>/gi,
@@ -523,11 +544,20 @@ export function processGranularTemplate(
   claimedSections.add('awards');
   const awardsList = data.awards || [];
   if (awardsList.length > 0) {
-    const awardsXml = awardsList.map((a) => buildBulletParagraphXml(a)).join('');
-    xml = xml.replace(
-      /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:awards_bullets|awards_list)\s*\}\}[\s\S]*?<\/w:p>/gi,
-      awardsXml
-    );
+    const awardsMatch = xml.match(/<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:awards_bullets|awards_list)\s*\}\}[\s\S]*?<\/w:p>/i);
+    if (awardsMatch) {
+      const awardProto = awardsMatch[0];
+      const awardsXml = awardsList.map((a) => {
+        return awardProto.replace(/\{\{\s*(?:awards_bullets|awards_list)\s*\}\}/gi, escapeXml(a));
+      }).join('');
+      xml = xml.replace(awardsMatch[0], awardsXml);
+    } else {
+      const awardsXml = awardsList.map((a) => buildBulletParagraphXml(a)).join('');
+      xml = xml.replace(
+        /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:awards_bullets|awards_list)\s*\}\}[\s\S]*?<\/w:p>/gi,
+        awardsXml
+      );
+    }
   } else {
     xml = xml.replace(
       /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?Awards\s+and\s+Achievements:?[\s\S]*?<\/w:p>\s*<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:awards_bullets|awards_list)\s*\}\}[\s\S]*?<\/w:p>/gi,
@@ -543,28 +573,92 @@ export function processGranularTemplate(
     );
   }
 
-  // F) Professional Experience Block
+  // F) Professional Experience Block: DYNAMIC PROTOTYPE CLONING
   claimedSections.add('experience');
   claimedSections.add('projects');
+
+  // Match the entire prototype block starting from the paragraph with project_number
+  // down to the paragraph containing responsibilities_bullets
+  const expPattern = /(<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?(?:project_number|\{\{\s*project)[\s\S]*?<\/w:p>[\s\S]*?<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*responsibilities_bullets\s*\}\}[\s\S]*?<\/w:p>)/i;
+  const expMatch = xml.match(expPattern);
+
   if (data.experience && data.experience.length > 0) {
-    const expXml = buildExperienceSectionXml(data, false);
-    const expPattern = /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?Project\s+\{\{\s*project_number\s*\}\}[\s\S]*?<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*responsibilities_bullets\s*\}\}[\s\S]*?<\/w:p>/gi;
-    if (expPattern.test(xml)) {
-      xml = xml.replace(expPattern, expXml);
+    if (expMatch) {
+      const prototypeBlockXml = expMatch[1];
+
+      const generatedBlocks = data.experience.map((exp, idx) => {
+        let bXml = prototypeBlockXml;
+
+        // 1. Project number
+        const projNum = exp.projectNumber || `Project ${idx + 1}`;
+        bXml = bXml.replace(/\{\{\s*project_number\s*\}\}/gi, escapeXml(projNum));
+
+        // 2. Client / Company name
+        bXml = bXml.replace(/\{\{\s*(?:client_name|company|client)\s*\}\}/gi, escapeXml(exp.company || ''));
+
+        // 3. Role / Title
+        bXml = bXml.replace(/\{\{\s*(?:role_title|role|job_title)\s*\}\}/gi, escapeXml(exp.role || ''));
+
+        // 4. Duration (replaces all occurrences in the block, e.g. if moved to right side)
+        const duration = [exp.startDate, exp.endDate].filter(Boolean).join(' to ');
+        bXml = bXml.replace(/\{\{\s*duration\s*\}\}/gi, escapeXml(duration));
+
+        // 5. Environment
+        if (exp.environment && exp.environment.trim()) {
+          bXml = bXml.replace(/\{\{\s*environment\s*\}\}/gi, escapeXml(exp.environment.trim()));
+        } else {
+          bXml = bXml.replace(/<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?Environment:?[\s\S]*?\{\{\s*environment\s*\}\}[\s\S]*?<\/w:p>/gi, '');
+          bXml = bXml.replace(/<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*environment\s*\}\}[\s\S]*?<\/w:p>/gi, '');
+        }
+
+        // 6. Working Environment (conditional)
+        if (exp.workingEnvironment && exp.workingEnvironment.length > 0) {
+          const weMatch = bXml.match(/<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*working_environment_bullets\s*\}\}[\s\S]*?<\/w:p>/i);
+          if (weMatch) {
+            const bulletProto = weMatch[0];
+            const bulletsXml = exp.workingEnvironment.map((item) => {
+              return bulletProto.replace(/\{\{\s*working_environment_bullets\s*\}\}/gi, escapeXml(item));
+            }).join('');
+            bXml = bXml.replace(weMatch[0], bulletsXml);
+          }
+        } else {
+          bXml = bXml.replace(/<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?Working\s+Environment:?[\s\S]*?<\/w:p>\s*<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*working_environment_bullets\s*\}\}[\s\S]*?<\/w:p>/gi, '');
+          bXml = bXml.replace(/<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?Working\s+Environment:?[\s\S]*?<\/w:p>/gi, '');
+          bXml = bXml.replace(/<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*working_environment_bullets\s*\}\}[\s\S]*?<\/w:p>/gi, '');
+        }
+
+        // 7. Responsibilities bullets
+        if (exp.bullets && exp.bullets.length > 0) {
+          const respMatch = bXml.match(/<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*responsibilities_bullets\s*\}\}[\s\S]*?<\/w:p>/i);
+          if (respMatch) {
+            const bulletProto = respMatch[0];
+            const bulletsXml = exp.bullets.map((item) => {
+              return bulletProto.replace(/\{\{\s*responsibilities_bullets\s*\}\}/gi, escapeXml(item));
+            }).join('');
+            bXml = bXml.replace(respMatch[0], bulletsXml);
+          }
+        } else {
+          bXml = bXml.replace(/<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?Responsibilities:?[\s\S]*?<\/w:p>\s*<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*responsibilities_bullets\s*\}\}[\s\S]*?<\/w:p>/gi, '');
+          bXml = bXml.replace(/<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*responsibilities_bullets\s*\}\}[\s\S]*?<\/w:p>/gi, '');
+        }
+
+        return bXml;
+      }).join('');
+
+      xml = xml.replace(expMatch[0], generatedBlocks);
+    } else {
+      const expXml = buildExperienceSectionXml(data, false);
+      const fallbackPattern = /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?Project\s+\{\{\s*project_number\s*\}\}[\s\S]*?<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*responsibilities_bullets\s*\}\}[\s\S]*?<\/w:p>/gi;
+      if (fallbackPattern.test(xml)) {
+        xml = xml.replace(fallbackPattern, expXml);
+      }
     }
   } else {
-    xml = xml.replace(
-      /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?Professional\s+Experience:?[\s\S]*?<\/w:p>\s*<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?Project\s+\{\{\s*project_number\s*\}\}[\s\S]*?<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*responsibilities_bullets\s*\}\}[\s\S]*?<\/w:p>/gi,
-      ''
-    );
-    xml = xml.replace(
-      /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?Professional\s+Experience:?[\s\S]*?<\/w:p>/gi,
-      ''
-    );
-    xml = xml.replace(
-      /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?Project\s+\{\{\s*project_number\s*\}\}[\s\S]*?<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*responsibilities_bullets\s*\}\}[\s\S]*?<\/w:p>/gi,
-      ''
-    );
+    // If candidate has NO experience, remove the prototype block and heading
+    if (expMatch) {
+      xml = xml.replace(expMatch[0], '');
+    }
+    xml = xml.replace(/<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?Professional\s+Experience:?[\s\S]*?<\/w:p>/gi, '');
   }
 
   // G) Professional Certifications
