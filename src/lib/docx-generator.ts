@@ -11,6 +11,9 @@ import {
   Footer,
 } from 'docx';
 import { ResumeData } from '@/types/resume';
+import { formatCandidateFirstName } from './name-utils';
+
+export { formatCandidateFirstName };
 
 function escapeXml(unsafe: string | null | undefined): string {
   return String(unsafe || '')
@@ -649,7 +652,8 @@ export async function generateDocxFromTemplate(
   if (docxBuffer) {
     try {
       const zip = new PizZip(docxBuffer.toString('binary'));
-      const candidateName = data.fullName?.trim() || 'Candidate Profile';
+      const rawName = data.fullName?.trim() || 'Candidate Profile';
+      const candidateName = formatCandidateFirstName(rawName);
       const targetRole = data.targetRole?.trim() || 'Technology Consultant';
       const removePersonal = Boolean(options?.removePersonalInfo);
 
@@ -672,19 +676,13 @@ export async function generateDocxFromTemplate(
             '$1'
           );
 
-          // C) Smart font scaling: When header value has 3+ words or is long (>18 chars),
-          // scale down oversized font to elegant 17pt (sz="34")
-          const isRoleHeader = /\{\{\s*(role|target_role|candidate_role|job_title|title|designation)\s*\}\}/i.test(hXml);
-          const activeHeaderValue = isRoleHeader ? targetRole : candidateName;
-          const wordCount = activeHeaderValue.trim().split(/\s+/).length;
-
-          if (wordCount >= 3 || activeHeaderValue.length > 18) {
-            hXml = hXml.replace(/<w:sz w:val="(?:44|42|40|38|36)"\/>/gi, '<w:sz w:val="34"/>');
-            hXml = hXml.replace(/<w:szCs w:val="(?:44|42|40|38|36)"\/>/gi, '<w:szCs w:val="34"/>');
-          }
+          // C) Candidate Name Heading: Calibri 22pt (sz="44", szCs="44")
+          hXml = hXml.replace(/<w:sz w:val="(?:1[0-9]|2[0-9]|3[0-9]|4[0-9])"\/>/gi, '<w:sz w:val="44"/>');
+          hXml = hXml.replace(/<w:szCs w:val="(?:1[0-9]|2[0-9]|3[0-9]|4[0-9])"\/>/gi, '<w:szCs w:val="44"/>');
+          hXml = hXml.replace(/<w:rFonts\b[^>]*\/>/gi, '<w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/>');
 
           // Dynamically replace {{ Role }} or {{ candidate_name }} in header
-          // Preserves natural case like "Shekar" for candidate name
+          // Preserves first-letter capitalized name e.g. "Abhiram"
           hXml = hXml.replace(ROLE_REGEX, () => escapeXml(targetRole));
           hXml = hXml.replace(NAME_REGEX, () => escapeXml(candidateName));
           zip.file(hPath, hXml);
@@ -850,6 +848,7 @@ export async function generateDocxFromTemplate(
 
 async function generateCleanFallbackDocx(data: ResumeData): Promise<Buffer> {
   const children: Paragraph[] = [];
+  const headingName = formatCandidateFirstName(data.fullName || 'Candidate Profile');
 
   children.push(
     new Paragraph({
@@ -857,11 +856,11 @@ async function generateCleanFallbackDocx(data: ResumeData): Promise<Buffer> {
       spacing: { before: 0, after: 60 },
       children: [
         new TextRun({
-          text: data.fullName || 'Candidate Profile',
+          text: headingName,
           bold: true,
-          size: 28,
+          size: 44, // 22pt
           color: '000000',
-          font: 'Times New Roman',
+          font: 'Calibri',
         }),
       ],
     })

@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { ResumeData } from '@/types/resume';
 import { TECNICS_LOGO_DATA_URI } from '@/lib/logo';
+import { formatCandidateFirstName } from '@/lib/name-utils';
 
 interface ResumePreviewModalProps {
   isOpen: boolean;
@@ -56,6 +57,7 @@ export default function ResumePreviewModal({
   if (!isOpen) return null;
 
   const displayName = (data?.fullName || candidateName || 'Candidate Profile').trim();
+  const headingFirstName = formatCandidateFirstName(displayName);
   const roleName = data?.targetRole;
 
   // Format full resume as structured plain text for copying
@@ -282,8 +284,15 @@ export default function ResumePreviewModal({
             {/* 1. EXACT WORD HEADER: Candidate Name on Left + Official TECNICS Logo on Right */}
             <div className="flex items-center justify-between pb-2 border-b border-black">
               <div className="min-w-0 pr-4">
-                <h1 className="text-xl sm:text-2xl font-bold text-black tracking-normal truncate">
-                  {headerType === 'role' && roleName ? roleName : displayName}
+                <h1
+                  className="font-bold text-black tracking-normal truncate"
+                  style={{
+                    fontFamily: 'Calibri, Candara, Segoe, "Segoe UI", Optima, Arial, sans-serif',
+                    fontSize: '22pt',
+                    lineHeight: '1.2',
+                  }}
+                >
+                  {headerType === 'role' && roleName ? roleName : headingFirstName}
                 </h1>
               </div>
 
