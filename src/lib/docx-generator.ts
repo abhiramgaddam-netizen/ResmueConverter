@@ -236,7 +236,7 @@ function normalizePlaceholdersInXml(xml: string): string {
     let prev: string;
     do {
       prev = normalizedInner;
-      normalizedInner = normalizedInner.replace(mergeRunRegex, '$1');
+      normalizedInner = normalizedInner.replace(mergeRunRegex, (_m: string, g1: string) => g1);
     } while (normalizedInner !== prev);
 
     // Normalize any '{ {' into '{{' and '} }' into '}}' and common Word typo splits
@@ -331,23 +331,42 @@ export function processGranularTemplate(
   }
 
   // A) Professional Summary
-  claimedSections.add('summary');
+  if (hasGranularSummary) {
+    claimedSections.add('summary');
+  }
   const summaryItems = Array.isArray(data.professionalSummary)
     ? data.professionalSummary
     : typeof data.professionalSummary === 'string' && data.professionalSummary.trim()
     ? data.professionalSummary.split('\n').filter(Boolean)
     : [];
 
+  let specXml = '';
+  if (data.specializedSkills && data.specializedSkills.length > 0) {
+    specXml = data.specializedSkills
+      .map((g) => {
+        const h = buildSubHeadingXml(g.title);
+        const b = (g.bullets || []).map((bullet) => buildBulletParagraphXml(bullet)).join('');
+        return h + b;
+      })
+      .join('');
+  }
+
   if (summaryItems.length > 0) {
     const sumMatch = xml.match(/<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:professional_summary_bullets|summary_bullets)\s*\}\}[\s\S]*?<\/w:p>/i);
     if (sumMatch) {
       const sumProto = sumMatch[0];
-      const bulletsXml = summaryItems.map((b) => {
+      let bulletsXml = summaryItems.map((b) => {
         return sumProto.replace(/\{\{\s*(?:professional_summary_bullets|summary_bullets)\s*\}\}/gi, escapeXml(b));
       }).join('');
+      if (!hasGranularSpecialized && specXml) {
+        bulletsXml += specXml;
+      }
       xml = xml.replace(sumMatch[0], bulletsXml);
     } else {
-      const bulletsXml = summaryItems.map((b) => buildBulletParagraphXml(b)).join('');
+      let bulletsXml = summaryItems.map((b) => buildBulletParagraphXml(b)).join('');
+      if (!hasGranularSpecialized && specXml) {
+        bulletsXml += specXml;
+      }
       xml = xml.replace(
         /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:professional_summary_bullets|summary_bullets)\s*\}\}[\s\S]*?<\/w:p>/gi,
         bulletsXml
@@ -369,218 +388,235 @@ export function processGranularTemplate(
   }
 
   // B) Specialized Skills (e.g. Migration Projects, SKILLS@SAP R/3, etc.)
-  if (data.specializedSkills && data.specializedSkills.length > 0) {
-    const specXml = data.specializedSkills
-      .map((g) => {
-        const h = buildSubHeadingXml(g.title);
-        const b = (g.bullets || []).map((bullet) => buildBulletParagraphXml(bullet)).join('');
-        return h + b;
-      })
-      .join('');
-    // Replace preceding bracketed/unbracketed heading + placeholder if present
-    xml = xml.replace(
-      /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\[?Specialized\s+Skill[\s\S]*?<\/w:p>\s*<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:specialized_skills_bullets|specialized_skills)\s*\}\}[\s\S]*?<\/w:p>/gi,
-      specXml
-    );
-    xml = xml.replace(
-      /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:specialized_skills_bullets|specialized_skills)\s*\}\}[\s\S]*?<\/w:p>/gi,
-      specXml
-    );
+  if (hasGranularSpecialized) {
+    if (specXml) {
+      // Replace preceding bracketed/unbracketed heading + placeholder if present
+      xml = xml.replace(
+        /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\[?Specialized\s+Skill[\s\S]*?<\/w:p>\s*<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:specialized_skills_bullets|specialized_skills)\s*\}\}[\s\S]*?<\/w:p>/gi,
+        specXml
+      );
+      xml = xml.replace(
+        /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:specialized_skills_bullets|specialized_skills)\s*\}\}[\s\S]*?<\/w:p>/gi,
+        specXml
+      );
+    } else {
+      // Completely remove heading and placeholder if candidate has NO specialized skills
+      xml = xml.replace(
+        /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\[?Specialized\s+Skill[\s\S]*?<\/w:p>\s*<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:specialized_skills_bullets|specialized_skills)\s*\}\}[\s\S]*?<\/w:p>/gi,
+        ''
+      );
+      xml = xml.replace(
+        /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\[?Specialized\s+Skill[\s\S]*?<\/w:p>/gi,
+        ''
+      );
+      xml = xml.replace(
+        /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:specialized_skills_bullets|specialized_skills)\s*\}\}[\s\S]*?<\/w:p>/gi,
+        ''
+      );
+    }
   } else {
-    // Completely remove heading and placeholder if candidate has NO specialized skills
-    xml = xml.replace(
-      /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\[?Specialized\s+Skill[\s\S]*?<\/w:p>\s*<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:specialized_skills_bullets|specialized_skills)\s*\}\}[\s\S]*?<\/w:p>/gi,
-      ''
-    );
+    // If not in template, clean up any bracketed dummy heading if left
     xml = xml.replace(
       /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\[?Specialized\s+Skill[\s\S]*?<\/w:p>/gi,
-      ''
-    );
-    xml = xml.replace(
-      /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:specialized_skills_bullets|specialized_skills)\s*\}\}[\s\S]*?<\/w:p>/gi,
       ''
     );
   }
 
   // C) Education
-  claimedSections.add('education');
-  if (data.education && data.education.length > 0) {
-    const eduMatch = xml.match(/<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:education_bullets|education_list)\s*\}\}[\s\S]*?<\/w:p>/i);
-    if (eduMatch) {
-      const eduProto = eduMatch[0];
-      const eduXml = data.education
-        .map((edu) => {
-          const line = [
-            edu.degree,
-            edu.fieldOfStudy ? `in ${edu.fieldOfStudy}` : '',
-            edu.institution ? `from ${edu.institution}` : '',
-            edu.endDate ? `(${edu.endDate})` : '',
-          ]
-            .filter(Boolean)
-            .join(' ')
-            .trim();
-          return eduProto.replace(/\{\{\s*(?:education_bullets|education_list)\s*\}\}/gi, escapeXml(line));
-        })
-        .join('');
-      xml = xml.replace(eduMatch[0], eduXml);
+  const hasEduInTemplate = /\{\{\s*(?:education_bullets|education_list)\s*\}\}/i.test(xml);
+  if (hasEduInTemplate) {
+    claimedSections.add('education');
+    if (data.education && data.education.length > 0) {
+      const eduMatch = xml.match(/<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:education_bullets|education_list)\s*\}\}[\s\S]*?<\/w:p>/i);
+      if (eduMatch) {
+        const eduProto = eduMatch[0];
+        const eduXml = data.education
+          .map((edu) => {
+            const line = [
+              edu.degree,
+              edu.fieldOfStudy ? `in ${edu.fieldOfStudy}` : '',
+              edu.institution ? `from ${edu.institution}` : '',
+              edu.endDate ? `(${edu.endDate})` : '',
+            ]
+              .filter(Boolean)
+              .join(' ')
+              .trim();
+            return eduProto.replace(/\{\{\s*(?:education_bullets|education_list)\s*\}\}/gi, escapeXml(line));
+          })
+          .join('');
+        xml = xml.replace(eduMatch[0], eduXml);
+      } else {
+        const eduXml = data.education
+          .map((edu) => {
+            const line = [
+              edu.degree,
+              edu.fieldOfStudy ? `in ${edu.fieldOfStudy}` : '',
+              edu.institution ? `from ${edu.institution}` : '',
+              edu.endDate ? `(${edu.endDate})` : '',
+            ]
+              .filter(Boolean)
+              .join(' ')
+              .trim();
+            return buildBulletParagraphXml(line);
+          })
+          .join('');
+        xml = xml.replace(
+          /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:education_bullets|education_list)\s*\}\}[\s\S]*?<\/w:p>/gi,
+          eduXml
+        );
+      }
     } else {
-      const eduXml = data.education
-        .map((edu) => {
-          const line = [
-            edu.degree,
-            edu.fieldOfStudy ? `in ${edu.fieldOfStudy}` : '',
-            edu.institution ? `from ${edu.institution}` : '',
-            edu.endDate ? `(${edu.endDate})` : '',
-          ]
-            .filter(Boolean)
-            .join(' ')
-            .trim();
-          return buildBulletParagraphXml(line);
-        })
-        .join('');
+      xml = xml.replace(
+        /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?Education:?[\s\S]*?<\/w:p>\s*<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:education_bullets|education_list)\s*\}\}[\s\S]*?<\/w:p>/gi,
+        ''
+      );
+      xml = xml.replace(
+        /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?Education:?[\s\S]*?<\/w:p>/gi,
+        ''
+      );
       xml = xml.replace(
         /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:education_bullets|education_list)\s*\}\}[\s\S]*?<\/w:p>/gi,
-        eduXml
+        ''
       );
     }
-  } else {
-    xml = xml.replace(
-      /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?Education:?[\s\S]*?<\/w:p>\s*<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:education_bullets|education_list)\s*\}\}[\s\S]*?<\/w:p>/gi,
-      ''
-    );
-    xml = xml.replace(
-      /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?Education:?[\s\S]*?<\/w:p>/gi,
-      ''
-    );
-    xml = xml.replace(
-      /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:education_bullets|education_list)\s*\}\}[\s\S]*?<\/w:p>/gi,
-      ''
-    );
   }
 
   // D) Technical Skills
-  claimedSections.add('skills');
-  const skillsList = data.skills || [];
-  const usedCategories = new Set<string>();
+  const hasSkillsInTemplate = /\{\{\s*(?:operating_systems|operating_system|os|sap_software|sap_skills|sap|database|databases|db|other_technical_skills|other_skills|additional_skills)\s*\}\}/i.test(xml);
+  if (hasSkillsInTemplate) {
+    claimedSections.add('skills');
+    const skillsList = data.skills || [];
+    const usedCategories = new Set<string>();
 
-  function matchCategory(patterns: string[]): string | null {
-    for (const cat of skillsList) {
-      if (usedCategories.has(cat.category)) continue;
-      const low = cat.category.toLowerCase();
-      if (patterns.some((p) => low.includes(p))) {
-        usedCategories.add(cat.category);
-        return cat.skills.join(', ');
+    function matchCategory(patterns: string[]): string | null {
+      for (const cat of skillsList) {
+        if (usedCategories.has(cat.category)) continue;
+        const low = cat.category.toLowerCase();
+        if (patterns.some((p) => low.includes(p))) {
+          usedCategories.add(cat.category);
+          return cat.skills.join(', ');
+        }
       }
+      return null;
     }
-    return null;
-  }
 
-  const osVal = matchCategory(['operating system', 'os', 'platform']);
-  if (osVal) {
-    xml = xml.replace(/\{\{\s*(?:operating_systems|operating_system|os)\s*\}\}/gi, () => escapeXml(osVal));
-  } else {
-    xml = xml.replace(
-      /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?Operating\s+Systems?:?[\s\S]*?\{\{\s*(?:operating_systems|operating_system|os)\s*\}\}[\s\S]*?<\/w:p>/gi,
-      ''
-    );
-    xml = xml.replace(
-      /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:operating_systems|operating_system|os)\s*\}\}[\s\S]*?<\/w:p>/gi,
-      ''
-    );
-  }
+    const osVal = matchCategory(['operating system', 'os', 'platform']);
+    if (osVal) {
+      xml = xml.replace(/\{\{\s*(?:operating_systems|operating_system|os)\s*\}\}/gi, () => escapeXml(osVal));
+    } else {
+      xml = xml.replace(
+        /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?Operating\s+Systems?:?[\s\S]*?\{\{\s*(?:operating_systems|operating_system|os)\s*\}\}[\s\S]*?<\/w:p>/gi,
+        ''
+      );
+      xml = xml.replace(
+        /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:operating_systems|operating_system|os)\s*\}\}[\s\S]*?<\/w:p>/gi,
+        ''
+      );
+    }
 
-  const sapVal = matchCategory(['sap', 'erp', 'netweaver', 'hana']);
-  if (sapVal) {
-    xml = xml.replace(/\{\{\s*(?:sap_software|sap_skills|sap)\s*\}\}/gi, () => escapeXml(sapVal));
-  } else {
-    xml = xml.replace(
-      /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?SAP\s+Software:?[\s\S]*?\{\{\s*(?:sap_software|sap_skills|sap)\s*\}\}[\s\S]*?<\/w:p>/gi,
-      ''
-    );
-    xml = xml.replace(
-      /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:sap_software|sap_skills|sap)\s*\}\}[\s\S]*?<\/w:p>/gi,
-      ''
-    );
-  }
+    const sapVal = matchCategory(['sap', 'erp', 'netweaver', 'hana']);
+    if (sapVal) {
+      xml = xml.replace(/\{\{\s*(?:sap_software|sap_skills|sap)\s*\}\}/gi, () => escapeXml(sapVal));
+    } else {
+      xml = xml.replace(
+        /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?SAP\s+Software:?[\s\S]*?\{\{\s*(?:sap_software|sap_skills|sap)\s*\}\}[\s\S]*?<\/w:p>/gi,
+        ''
+      );
+      xml = xml.replace(
+        /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:sap_software|sap_skills|sap)\s*\}\}[\s\S]*?<\/w:p>/gi,
+        ''
+      );
+    }
 
-  const dbVal = matchCategory(['database', 'db', 'rdbms', 'sql', 'nosql']);
-  if (dbVal) {
-    xml = xml.replace(/\{\{\s*(?:database|databases|db)\s*\}\}/gi, () => escapeXml(dbVal));
-  } else {
-    xml = xml.replace(
-      /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?Database:?[\s\S]*?\{\{\s*(?:database|databases|db)\s*\}\}[\s\S]*?<\/w:p>/gi,
-      ''
-    );
-    xml = xml.replace(
-      /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:database|databases|db)\s*\}\}[\s\S]*?<\/w:p>/gi,
-      ''
-    );
-  }
+    const dbVal = matchCategory(['database', 'db', 'rdbms', 'sql', 'nosql']);
+    if (dbVal) {
+      xml = xml.replace(/\{\{\s*(?:database|databases|db)\s*\}\}/gi, () => escapeXml(dbVal));
+    } else {
+      xml = xml.replace(
+        /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?Database:?[\s\S]*?\{\{\s*(?:database|databases|db)\s*\}\}[\s\S]*?<\/w:p>/gi,
+        ''
+      );
+      xml = xml.replace(
+        /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:database|databases|db)\s*\}\}[\s\S]*?<\/w:p>/gi,
+        ''
+      );
+    }
 
-  const remainingCats = skillsList.filter((c) => !usedCategories.has(c.category));
-  if (remainingCats.length > 0) {
-    const otherXml = remainingCats
-      .map((c) => {
-        const tabs = c.category.length <= 12 ? 2 : 1;
-        return buildKeyValueTabXml(c.category, c.skills.join(', '), tabs, false);
-      })
-      .join('');
-    xml = xml.replace(
-      /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:other_technical_skills|other_skills|additional_skills)\s*\}\}[\s\S]*?<\/w:p>/gi,
-      otherXml
-    );
-  } else {
-    xml = xml.replace(
-      /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:other_technical_skills|other_skills|additional_skills)\s*\}\}[\s\S]*?<\/w:p>/gi,
-      ''
-    );
-  }
+    const remainingCats = skillsList.filter((c) => !usedCategories.has(c.category));
+    if (remainingCats.length > 0) {
+      const otherXml = remainingCats
+        .map((c) => {
+          const tabs = c.category.length <= 12 ? 2 : 1;
+          return buildKeyValueTabXml(c.category, c.skills.join(', '), tabs, false);
+        })
+        .join('');
+      const otherSkillRegex = /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:other_technical_skills|other_skills|additional_skills)\s*\}\}[\s\S]*?<\/w:p>/gi;
+      if (otherSkillRegex.test(xml)) {
+        xml = xml.replace(otherSkillRegex, otherXml);
+      } else {
+        // Template did not have {{ other_technical_skills }} tag - insert after the last rendered skill line!
+        const lastSkillLineMatch = xml.match(/<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?(?:Database|Operating\s+Systems?|SAP\s+Software):?[\s\S]*?<\/w:p>/gi);
+        if (lastSkillLineMatch) {
+          const lastLine = lastSkillLineMatch[lastSkillLineMatch.length - 1];
+          xml = xml.replace(lastLine, `${lastLine}${otherXml}`);
+        }
+      }
+    } else {
+      xml = xml.replace(
+        /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:other_technical_skills|other_skills|additional_skills)\s*\}\}[\s\S]*?<\/w:p>/gi,
+        ''
+      );
+    }
 
-  if (skillsList.length === 0) {
-    xml = xml.replace(/<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?Technical\s+Skills:?[\s\S]*?<\/w:p>/gi, '');
+    if (skillsList.length === 0) {
+      xml = xml.replace(/<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?Technical\s+Skills:?[\s\S]*?<\/w:p>/gi, '');
+    }
   }
 
   // E) Awards and Achievements
-  claimedSections.add('awards');
   const awardsList = data.awards || [];
-  if (awardsList.length > 0) {
-    const awardsMatch = xml.match(/<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:awards_bullets|awards_list)\s*\}\}[\s\S]*?<\/w:p>/i);
-    if (awardsMatch) {
-      const awardProto = awardsMatch[0];
-      const awardsXml = awardsList.map((a) => {
-        return awardProto.replace(/\{\{\s*(?:awards_bullets|awards_list)\s*\}\}/gi, escapeXml(a));
-      }).join('');
-      xml = xml.replace(awardsMatch[0], awardsXml);
+  const hasAwardsInTemplate = /\{\{\s*(?:awards_bullets|awards_list)\s*\}\}/i.test(xml);
+  if (hasAwardsInTemplate) {
+    claimedSections.add('awards');
+    if (awardsList.length > 0) {
+      const awardsMatch = xml.match(/<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:awards_bullets|awards_list)\s*\}\}[\s\S]*?<\/w:p>/i);
+      if (awardsMatch) {
+        const awardProto = awardsMatch[0];
+        const awardsXml = awardsList.map((a) => {
+          return awardProto.replace(/\{\{\s*(?:awards_bullets|awards_list)\s*\}\}/gi, escapeXml(a));
+        }).join('');
+        xml = xml.replace(awardsMatch[0], awardsXml);
+      } else {
+        const awardsXml = awardsList.map((a) => buildBulletParagraphXml(a)).join('');
+        xml = xml.replace(
+          /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:awards_bullets|awards_list)\s*\}\}[\s\S]*?<\/w:p>/gi,
+          awardsXml
+        );
+      }
     } else {
-      const awardsXml = awardsList.map((a) => buildBulletParagraphXml(a)).join('');
+      xml = xml.replace(
+        /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?Awards\s+and\s+Achievements:?[\s\S]*?<\/w:p>\s*<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:awards_bullets|awards_list)\s*\}\}[\s\S]*?<\/w:p>/gi,
+        ''
+      );
+      xml = xml.replace(
+        /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?Awards\s+and\s+Achievements:?[\s\S]*?<\/w:p>/gi,
+        ''
+      );
       xml = xml.replace(
         /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:awards_bullets|awards_list)\s*\}\}[\s\S]*?<\/w:p>/gi,
-        awardsXml
+        ''
       );
     }
-  } else {
-    xml = xml.replace(
-      /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?Awards\s+and\s+Achievements:?[\s\S]*?<\/w:p>\s*<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:awards_bullets|awards_list)\s*\}\}[\s\S]*?<\/w:p>/gi,
-      ''
-    );
-    xml = xml.replace(
-      /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?Awards\s+and\s+Achievements:?[\s\S]*?<\/w:p>/gi,
-      ''
-    );
-    xml = xml.replace(
-      /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:awards_bullets|awards_list)\s*\}\}[\s\S]*?<\/w:p>/gi,
-      ''
-    );
   }
 
   // F) Professional Experience Block: DYNAMIC PROTOTYPE CLONING
-  claimedSections.add('experience');
-  claimedSections.add('projects');
-
-  // Match the entire prototype block starting from the paragraph with project_number
-  // down to the paragraph containing responsibilities_bullets
   const expPattern = /(<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?(?:project_number|\{\{\s*project)[\s\S]*?<\/w:p>[\s\S]*?<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*responsibilities_bullets\s*\}\}[\s\S]*?<\/w:p>)/i;
   const expMatch = xml.match(expPattern);
+  const fallbackPattern = /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?Project\s+\{\{\s*project_number\s*\}\}[\s\S]*?<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*responsibilities_bullets\s*\}\}[\s\S]*?<\/w:p>/gi;
+
+  if (expMatch || fallbackPattern.test(xml)) {
+    claimedSections.add('experience');
+    claimedSections.add('projects');
 
   if (data.experience && data.experience.length > 0) {
     if (expMatch) {
@@ -660,37 +696,51 @@ export function processGranularTemplate(
     }
     xml = xml.replace(/<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?Professional\s+Experience:?[\s\S]*?<\/w:p>/gi, '');
   }
+}
 
   // G) Professional Certifications
-  claimedSections.add('certifications');
   const certsList = data.certifications || [];
-  if (certsList.length > 0) {
-    const certsXml = certsList.map((c) => buildBulletParagraphXml(c)).join('');
-    xml = xml.replace(
-      /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:certifications_bullets|certifications_list)\s*\}\}[\s\S]*?<\/w:p>/gi,
-      certsXml
-    );
-  } else {
-    xml = xml.replace(
-      /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?Professional\s+Certifications:?[\s\S]*?<\/w:p>\s*<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:certifications_bullets|certifications_list)\s*\}\}[\s\S]*?<\/w:p>/gi,
-      ''
-    );
-    xml = xml.replace(
-      /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?Certifications:?[\s\S]*?<\/w:p>\s*<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:certifications_bullets|certifications_list)\s*\}\}[\s\S]*?<\/w:p>/gi,
-      ''
-    );
-    xml = xml.replace(
-      /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?Professional\s+Certifications:?[\s\S]*?<\/w:p>/gi,
-      ''
-    );
-    xml = xml.replace(
-      /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?Certifications:?[\s\S]*?<\/w:p>/gi,
-      ''
-    );
-    xml = xml.replace(
-      /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:certifications_bullets|certifications_list)\s*\}\}[\s\S]*?<\/w:p>/gi,
-      ''
-    );
+  const hasCertsInTemplate = /\{\{\s*(?:certifications_bullets|certifications_list|certifications|certificates)\s*\}\}/i.test(xml);
+
+  if (hasCertsInTemplate) {
+    claimedSections.add('certifications');
+    if (certsList.length > 0) {
+      const certsMatch = xml.match(/<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:certifications_bullets|certifications_list|certifications|certificates)\s*\}\}[\s\S]*?<\/w:p>/i);
+      if (certsMatch) {
+        const certProto = certsMatch[0];
+        const certsXml = certsList.map((c) => {
+          return certProto.replace(/\{\{\s*(?:certifications_bullets|certifications_list|certifications|certificates)\s*\}\}/gi, escapeXml(c));
+        }).join('');
+        xml = xml.replace(certsMatch[0], certsXml);
+      } else {
+        const certsXml = certsList.map((c) => buildBulletParagraphXml(c)).join('');
+        xml = xml.replace(
+          /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:certifications_bullets|certifications_list|certifications|certificates)\s*\}\}[\s\S]*?<\/w:p>/gi,
+          certsXml
+        );
+      }
+    } else {
+      xml = xml.replace(
+        /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?Professional\s+Certifications:?[\s\S]*?<\/w:p>\s*<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:certifications_bullets|certifications_list|certifications|certificates)\s*\}\}[\s\S]*?<\/w:p>/gi,
+        ''
+      );
+      xml = xml.replace(
+        /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?Certifications:?[\s\S]*?<\/w:p>\s*<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:certifications_bullets|certifications_list|certifications|certificates)\s*\}\}[\s\S]*?<\/w:p>/gi,
+        ''
+      );
+      xml = xml.replace(
+        /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?Professional\s+Certifications:?[\s\S]*?<\/w:p>/gi,
+        ''
+      );
+      xml = xml.replace(
+        /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?Certifications:?[\s\S]*?<\/w:p>/gi,
+        ''
+      );
+      xml = xml.replace(
+        /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:certifications_bullets|certifications_list|certifications|certificates)\s*\}\}[\s\S]*?<\/w:p>/gi,
+        ''
+      );
+    }
   }
 
   // Cleanup: Any bracketed placeholder instruction paragraph like [Specialized Skill Highlights / Migration Projects - if applicable]
@@ -919,6 +969,9 @@ export async function generateDocxFromTemplate(
           docXml = docXml.replace(CONTENT_REGEX, () => remainingXml);
         } else if (claimedSections.size === 0 && !isGranularHandled) {
           // If no placeholders were used at all and NOT a granular template, append to w:body
+          docXml = docXml.replace(/<\/w:body>/, () => `${remainingXml}</w:body>`);
+        } else if (remainingXml.trim()) {
+          // ZERO DATA LOSS: Append any sections present in candidate data that lacked a template placeholder
           docXml = docXml.replace(/<\/w:body>/, () => `${remainingXml}</w:body>`);
         }
 

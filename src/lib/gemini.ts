@@ -7,7 +7,7 @@ REQUIRED SECTION ORDER & STRUCTURE:
 1. Professional Summary: Bullet list of core experience, years, environments, and OS/cloud familiarity.
 2. Specialized Skill Sections (if present in source): Capture domain-specific groupings such as "Migration Projects", "SKILLS@SAP R/3", "Net Weaver Skills", "Hana Skills", or similar technical breakdowns right after Professional Summary.
 3. Education: Degree and University (e.g., "MCA from Osmania University.").
-4. Technical Skills: Categorized key-value lines (e.g., Operating Systems, SAP Software / Frameworks, Database, Cloud / Tools).
+4. Technical Skills: Categorized key-value lines (e.g., Operating Systems, SAP Software / Frameworks, Database, Cloud / Tools, Programming, DevOps, Reporting Tools, Orchestration, Project Management).
 5. Awards and Achievements: Bullet points of client appreciations, awards, and recognitions (if present).
 6. Professional Experience: Chronological projects labeled "Project 1", "Project 2", etc., each containing:
    - Client
@@ -16,6 +16,7 @@ REQUIRED SECTION ORDER & STRUCTURE:
    - Environment (tech stack / versions / tools used in that project)
    - Working Environment (optional bullet points if mentioned in source)
    - Responsibilities (detailed bullet points of tasks and achievements)
+7. Professional Certifications: Bullet list of external certifications, licenses, and vendor credentials. Format each bullet with Certification Title, Issuing Vendor/Organization, and Validity/Expiry Date (if present).
 `;
 
 export const RESUME_JSON_SCHEMA = {
@@ -96,7 +97,8 @@ export const RESUME_JSON_SCHEMA = {
     },
     certifications: {
       type: "ARRAY",
-      items: { type: "STRING" }
+      items: { type: "STRING" },
+      description: "All external certifications, vendor credentials, and accreditations. Each bullet MUST include the full certification name, issuing vendor/organization, and validity or expiry date if mentioned (e.g. 'Snowflake SnowPro Advanced: Data Engineer – Snowflake (Valid through May-2028)'). Never omit any certification or vendor."
     }
   },
   required: ["fullName", "targetRole", "professionalSummary", "education", "skills", "experience"]
@@ -179,12 +181,16 @@ You are an expert Corporate Resume Specialist at Tecnics Integration Technologie
 Convert the candidate's source resume into the exact Tecnics Standard Consultant format.
 
 CRITICAL RULES:
-1. DO NOT DROP SECTIONS: If the candidate has specialized skill sections (like "Migration Projects", "SKILLS@SAP R/3", "Net Weaver Skills", "Hana Skills", etc.), extract ALL of them into 'specializedSkills'.
-2. PRESERVE EVERY BULLET: Never summarize or shorten responsibility bullets. Keep all technical details.
-3. PROJECT FORMAT: Every work experience or project entry must map to Project 1, Project 2, etc., capturing Client ('company'), Role ('role'), Duration ('startDate'), Environment ('environment'), Working Environment ('workingEnvironment' if present), and Responsibilities ('bullets').
-4. CANDIDATE NAME: Extract the candidate's real name, or fallback to "${inferredName}".
-5. ZERO FABRICATION: Only extract facts present in the candidate's source text.
-${removePersonalInfo ? '6. PRIVACY & ANONYMIZATION: The user explicitly requires personal contact details (phone numbers, emails, addresses, personal URLs) to be omitted.' : ''}
+1. DO NOT DROP SECTIONS OR TABLES: If the candidate has specialized skill sections, certifications, awards, education, or experience, extract ALL of them. Never omit sections or rows because they appear in a table.
+2. TABLE DECONSTRUCTION (CRITICAL): Resumes often contain tables for Skills, Certifications, or Work History. You must convert tabular content into clean structured data without losing a single piece of information:
+   - Technical Skills Tables: Extract EVERY single row as a categorized skill group in 'skills' (e.g., Programming, Databases, DevOps, Reporting Tools, Orchestration, Project Management, Others). Never merge, truncate, or omit rows.
+   - Certifications Tables: Extract EVERY single row into 'certifications'. Include the certification title, the issuing vendor/organization, and any validity/expiry dates (e.g., "Snowflake SnowPro Advanced: Data Engineer – Snowflake (Valid through May-2028)").
+   - Employment / Work History Tables: If jobs or client profiles are listed as tables (e.g., Employer, Title, Domain, Date of Employment), map Employer -> 'company', Title -> 'role', Date of Employment -> 'startDate', Domain/Tools -> 'environment', and bulleted responsibilities -> 'bullets'.
+3. PRESERVE EVERY BULLET & DETAIL: Never summarize, shorten, or drop responsibility bullets. Keep all technical details, metrics, and tools.
+4. PROJECT FORMAT: Every work experience or project entry must map to Project 1, Project 2, etc., capturing Client ('company'), Role ('role'), Duration ('startDate'), Environment ('environment'), Working Environment ('workingEnvironment' if present), and Responsibilities ('bullets').
+5. CANDIDATE NAME: Extract the candidate's real name, or fallback to "${inferredName}".
+6. ZERO FABRICATION: Only extract facts present in the candidate's source text.
+${removePersonalInfo ? '7. PRIVACY & ANONYMIZATION: The user explicitly requires personal contact details (phone numbers, emails, addresses, personal URLs) to be omitted.' : ''}
 `;
 
   const userPrompt = `
