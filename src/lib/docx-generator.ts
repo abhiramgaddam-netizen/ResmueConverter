@@ -164,13 +164,16 @@ export function buildExperienceSectionXml(data: ResumeData, includeHeading = tru
 
   data.experience.forEach((exp, idx) => {
     const projTitle = exp.projectNumber || `Project ${idx + 1}`;
-    parts.push(buildSubHeadingXml(projTitle));
+    parts.push(buildSubHeadingXml(exp.projectName ? `${projTitle}: ${exp.projectName}` : projTitle));
 
     const duration = [exp.startDate, exp.endDate].filter(Boolean).join(' to ');
     if (exp.company) parts.push(buildKeyValueTabXml('Client:', exp.company, 3, true));
     if (exp.role) parts.push(buildKeyValueTabXml('Role:', exp.role, 3, true));
     if (duration) parts.push(buildKeyValueTabXml('Duration:', duration, 2, true));
     if (exp.environment) parts.push(buildKeyValueTabXml('Environment:', exp.environment, 2, true));
+    if (exp.domain) parts.push(buildKeyValueTabXml('Domain:', exp.domain, 2, true));
+    if (exp.onsiteOffshore) parts.push(buildKeyValueTabXml('Location:', exp.onsiteOffshore, 2, true));
+    if (exp.description) parts.push(buildBulletParagraphXml(`Project Description: ${exp.description}`));
 
     // Conditional Working Environment section
     if (exp.workingEnvironment && exp.workingEnvironment.length > 0) {
@@ -184,7 +187,7 @@ export function buildExperienceSectionXml(data: ResumeData, includeHeading = tru
     if (exp.bullets && exp.bullets.length > 0) {
       parts.push(buildSubHeadingXml('Responsibilities:'));
       for (const b of exp.bullets) {
-        parts.push(buildBulletParagraphXml(b));
+        parts.push(buildBulletParagraphXml(b))
       }
     }
   });
@@ -201,6 +204,18 @@ export function buildCertificationsSectionXml(data: ResumeData, includeHeading =
     parts.push(buildBulletParagraphXml(cert));
   }
   return parts.join('');
+}
+
+function buildAdditionalSectionsXml(data: ResumeData): string {
+  return (data.additionalSections || []).filter((section) => section.title && section.items?.length)
+    .map((section) => buildSectionHeadingXml(section.title) + section.items.map(buildBulletParagraphXml).join('')).join('');
+}
+
+function appendBeforeSectPr(docXml: string, newXml: string): string {
+  if (!newXml.trim()) return docXml;
+  const sectPrIdx = docXml.lastIndexOf('<w:sectPr');
+  if (sectPrIdx >= 0) return docXml.slice(0, sectPrIdx) + newXml + docXml.slice(sectPrIdx);
+  return docXml.replace(/<\/w:body>/, () => `${newXml}</w:body>`);
 }
 
 /**
@@ -552,13 +567,21 @@ export function processGranularTemplate(
         .join('');
       const otherSkillRegex = /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:other_technical_skills|other_skills|additional_skills)\s*\}\}[\s\S]*?<\/w:p>/gi;
       if (otherSkillRegex.test(xml)) {
-        xml = xml.replace(otherSkillRegex, otherXml);
+        xml = xml.replace(otherSkillRegex, () => otherXml);
       } else {
         // Template did not have {{ other_technical_skills }} tag - insert after the last rendered skill line!
         const lastSkillLineMatch = xml.match(/<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?(?:Database|Operating\s+Systems?|SAP\s+Software):?[\s\S]*?<\/w:p>/gi);
         if (lastSkillLineMatch) {
           const lastLine = lastSkillLineMatch[lastSkillLineMatch.length - 1];
-          xml = xml.replace(lastLine, `${lastLine}${otherXml}`);
+          xml = xml.replace(lastLine, () => `${lastLine}${otherXml}`);
+        } else {
+          // If no specific skill line was matched, look for Technical Skills heading:
+          const techHeadingRegex = /(<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?Technical\s+Skills:?[\s\S]*?<\/w:p>)/i;
+          if (techHeadingRegex.test(xml)) {
+            xml = xml.replace(techHeadingRegex, (_m, g1) => `${g1}${otherXml}`);
+          } else {
+            claimedSections.delete('skills'); // Let the fallback section builder render all skills so nothing is lost!
+          }
         }
       }
     } else {
@@ -583,14 +606,14 @@ export function processGranularTemplate(
       if (awardsMatch) {
         const awardProto = awardsMatch[0];
         const awardsXml = awardsList.map((a) => {
-          return awardProto.replace(/\{\{\s*(?:awards_bullets|awards_list)\s*\}\}/gi, escapeXml(a));
+          return awardProto.replace(/\{\{\s*(?:awards_bullets|awards_list)\s*\}\}/gi, () => escapeXml(a));
         }).join('');
-        xml = xml.replace(awardsMatch[0], awardsXml);
+        xml = xml.replace(awardsMatch[0], () => awardsXml);
       } else {
         const awardsXml = awardsList.map((a) => buildBulletParagraphXml(a)).join('');
         xml = xml.replace(
           /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:awards_bullets|awards_list)\s*\}\}[\s\S]*?<\/w:p>/gi,
-          awardsXml
+          () => awardsXml
         );
       }
     } else {
@@ -627,7 +650,7 @@ export function processGranularTemplate(
 
         // 1. Project number
         const projNum = exp.projectNumber || `Project ${idx + 1}`;
-        bXml = bXml.replace(/\{\{\s*project_number\s*\}\}/gi, escapeXml(projNum));
+        bXml = bXml.replace(/\{\{\s*project_number\s*\}\}/gi, escapeXml(exp.projectName ? `${projNum}: ${exp.projectName}` : projNum));
 
         // 2. Client / Company name
         bXml = bXml.replace(/\{\{\s*(?:client_name|company|client)\s*\}\}/gi, escapeXml(exp.company || ''));
@@ -664,11 +687,17 @@ export function processGranularTemplate(
         }
 
         // 7. Responsibilities bullets
-        if (exp.bullets && exp.bullets.length > 0) {
+        const enrichedBullets = [
+          ...(exp.description ? [`Project Description: ${exp.description}`] : []),
+          ...(exp.domain ? [`Domain: ${exp.domain}`] : []),
+          ...(exp.onsiteOffshore ? [`Onsite/Offshore: ${exp.onsiteOffshore}`] : []),
+          ...(exp.bullets || []),
+        ];
+        if (enrichedBullets.length > 0) {
           const respMatch = bXml.match(/<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*responsibilities_bullets\s*\}\}[\s\S]*?<\/w:p>/i);
           if (respMatch) {
             const bulletProto = respMatch[0];
-            const bulletsXml = exp.bullets.map((item) => {
+            const bulletsXml = enrichedBullets.map((item) => {
               return bulletProto.replace(/\{\{\s*responsibilities_bullets\s*\}\}/gi, escapeXml(item));
             }).join('');
             bXml = bXml.replace(respMatch[0], bulletsXml);
@@ -681,12 +710,12 @@ export function processGranularTemplate(
         return bXml;
       }).join('');
 
-      xml = xml.replace(expMatch[0], generatedBlocks);
+      xml = xml.replace(expMatch[0], () => generatedBlocks);
     } else {
       const expXml = buildExperienceSectionXml(data, false);
       const fallbackPattern = /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?Project\s+\{\{\s*project_number\s*\}\}[\s\S]*?<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*responsibilities_bullets\s*\}\}[\s\S]*?<\/w:p>/gi;
       if (fallbackPattern.test(xml)) {
-        xml = xml.replace(fallbackPattern, expXml);
+        xml = xml.replace(fallbackPattern, () => expXml);
       }
     }
   } else {
@@ -709,14 +738,14 @@ export function processGranularTemplate(
       if (certsMatch) {
         const certProto = certsMatch[0];
         const certsXml = certsList.map((c) => {
-          return certProto.replace(/\{\{\s*(?:certifications_bullets|certifications_list|certifications|certificates)\s*\}\}/gi, escapeXml(c));
+          return certProto.replace(/\{\{\s*(?:certifications_bullets|certifications_list|certifications|certificates)\s*\}\}/gi, () => escapeXml(c));
         }).join('');
-        xml = xml.replace(certsMatch[0], certsXml);
+        xml = xml.replace(certsMatch[0], () => certsXml);
       } else {
         const certsXml = certsList.map((c) => buildBulletParagraphXml(c)).join('');
         xml = xml.replace(
           /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*(?:certifications_bullets|certifications_list|certifications|certificates)\s*\}\}[\s\S]*?<\/w:p>/gi,
-          certsXml
+          () => certsXml
         );
       }
     } else {
@@ -962,6 +991,7 @@ export async function generateDocxFromTemplate(
         if (!claimedSections.has('certifications')) {
           remainingParts.push(buildCertificationsSectionXml(data, true));
         }
+        remainingParts.push(buildAdditionalSectionsXml(data));
 
         const remainingXml = remainingParts.join('');
 
@@ -969,16 +999,16 @@ export async function generateDocxFromTemplate(
           docXml = docXml.replace(CONTENT_REGEX, () => remainingXml);
         } else if (claimedSections.size === 0 && !isGranularHandled) {
           // If no placeholders were used at all and NOT a granular template, append to w:body
-          docXml = docXml.replace(/<\/w:body>/, () => `${remainingXml}</w:body>`);
+          docXml = appendBeforeSectPr(docXml, remainingXml);
         } else if (remainingXml.trim()) {
           // ZERO DATA LOSS: Append any sections present in candidate data that lacked a template placeholder
-          docXml = docXml.replace(/<\/w:body>/, () => `${remainingXml}</w:body>`);
+          docXml = appendBeforeSectPr(docXml, remainingXml);
         }
 
         if (isGranularHandled) {
           // Clean up any lingering optional instructional headings or unused placeholders
           docXml = docXml.replace(/<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\[[^\]]*(?:if applicable|Other Skills|Highlights)[^\]]*\][\s\S]*?<\/w:p>/gi, '');
-          docXml = docXml.replace(/<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?\{\{\s*[\w\s.-]+\s*\}\}[\s\S]*?<\/w:p>/gi, '');
+          docXml = docXml.replace(/\{\{\s*[\w\s.-]+\s*\}\}/gi, '');
         }
 
         zip.file('word/document.xml', docXml);
@@ -990,13 +1020,80 @@ export async function generateDocxFromTemplate(
     }
   }
 
-  return await generateCleanFallbackDocx(data);
+  return await generateCleanFallbackDocx(data, options);
 }
 
-async function generateCleanFallbackDocx(data: ResumeData): Promise<Buffer> {
+async function generateCleanFallbackDocx(
+  data: ResumeData,
+  options?: { removePersonalInfo?: boolean }
+): Promise<Buffer> {
   const children: Paragraph[] = [];
   const headingName = formatCandidateFirstName(data.fullName || 'Candidate Profile');
 
+  const createSectionHeading = (title: string) =>
+    new Paragraph({
+      spacing: { before: 200, after: 60 },
+      children: [
+        new TextRun({
+          text: title.endsWith(':') ? title : `${title}:`,
+          bold: true,
+          size: 26, // 13pt
+          color: '000000',
+          font: 'Times New Roman',
+        }),
+      ],
+    });
+
+  const createSubHeading = (title: string) =>
+    new Paragraph({
+      spacing: { before: 140, after: 40 },
+      children: [
+        new TextRun({
+          text: title,
+          bold: true,
+          size: 22, // 11pt
+          color: '000000',
+          font: 'Times New Roman',
+        }),
+      ],
+    });
+
+  const createBullet = (text: string) =>
+    new Paragraph({
+      spacing: { before: 20, after: 30 },
+      indent: { left: 360, hanging: 240 },
+      children: [
+        new TextRun({
+          text: `•\t${text}`,
+          size: 22, // 11pt
+          color: '000000',
+          font: 'Times New Roman',
+        }),
+      ],
+    });
+
+  const createKeyValue = (label: string, value: string, boldValue = false) =>
+    new Paragraph({
+      spacing: { before: 20, after: 30 },
+      children: [
+        new TextRun({
+          text: label.endsWith(':') ? `${label}\t` : `${label}:\t`,
+          bold: true,
+          size: 22,
+          color: '000000',
+          font: 'Times New Roman',
+        }),
+        new TextRun({
+          text: value,
+          bold: boldValue,
+          size: 22,
+          color: '000000',
+          font: 'Times New Roman',
+        }),
+      ],
+    });
+
+  // 1. Candidate Name (Calibri 22pt bold)
   children.push(
     new Paragraph({
       alignment: AlignmentType.CENTER,
@@ -1013,6 +1110,7 @@ async function generateCleanFallbackDocx(data: ResumeData): Promise<Buffer> {
     })
   );
 
+  // 2. Target Role (Times New Roman 11pt bold)
   if (data.targetRole) {
     children.push(
       new Paragraph({
@@ -1031,7 +1129,33 @@ async function generateCleanFallbackDocx(data: ResumeData): Promise<Buffer> {
     );
   }
 
-  // Summary
+  // 3. Contact Info (if not removed)
+  if (!options?.removePersonalInfo && data.contactInfo) {
+    const contactParts = [
+      data.contactInfo.email,
+      data.contactInfo.phone,
+      data.contactInfo.location,
+      data.contactInfo.linkedin,
+    ].filter(Boolean);
+    if (contactParts.length > 0) {
+      children.push(
+        new Paragraph({
+          alignment: AlignmentType.CENTER,
+          spacing: { before: 0, after: 120 },
+          children: [
+            new TextRun({
+              text: contactParts.join('   |   '),
+              size: 20,
+              color: '475569',
+              font: 'Times New Roman',
+            }),
+          ],
+        })
+      );
+    }
+  }
+
+  // 4. Professional Summary
   const summaryItems = Array.isArray(data.professionalSummary)
     ? data.professionalSummary
     : typeof data.professionalSummary === 'string' && data.professionalSummary.trim()
@@ -1039,34 +1163,109 @@ async function generateCleanFallbackDocx(data: ResumeData): Promise<Buffer> {
     : [];
 
   if (summaryItems.length > 0) {
-    children.push(
-      new Paragraph({
-        spacing: { before: 160, after: 60 },
-        children: [
-          new TextRun({
-            text: 'Professional Summary:',
-            bold: true,
-            size: 26,
-            color: '000000',
-            font: 'Times New Roman',
-          }),
-        ],
-      })
-    );
+    children.push(createSectionHeading('Professional Summary:'));
     for (const item of summaryItems) {
-      children.push(
-        new Paragraph({
-          spacing: { before: 20, after: 30 },
-          children: [
-            new TextRun({
-              text: `•\t${item}`,
-              size: 22,
-              color: '000000',
-              font: 'Times New Roman',
-            }),
-          ],
-        })
-      );
+      children.push(createBullet(item));
+    }
+  }
+
+  // 5. Specialized Skills
+  if (data.specializedSkills && data.specializedSkills.length > 0) {
+    for (const group of data.specializedSkills) {
+      if (group.title && group.bullets?.length > 0) {
+        children.push(createSubHeading(group.title));
+        for (const b of group.bullets) {
+          children.push(createBullet(b));
+        }
+      }
+    }
+  }
+
+  // 6. Education
+  if (data.education && data.education.length > 0) {
+    children.push(createSectionHeading('Education:'));
+    for (const edu of data.education) {
+      const line = [
+        edu.degree,
+        edu.fieldOfStudy ? `in ${edu.fieldOfStudy}` : '',
+        edu.institution ? `from ${edu.institution}` : '',
+        edu.endDate ? `(${edu.endDate})` : '',
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (line) children.push(createBullet(line));
+    }
+  }
+
+  // 7. Technical Skills
+  if (data.skills && data.skills.length > 0) {
+    children.push(createSectionHeading('Technical Skills:'));
+    for (const cat of data.skills) {
+      if (cat && Array.isArray(cat.skills) && cat.skills.length > 0) {
+        children.push(createKeyValue(cat.category || 'Skills', cat.skills.join(', ')));
+      }
+    }
+  }
+
+  // 8. Awards and Achievements
+  if (data.awards && data.awards.length > 0) {
+    children.push(createSectionHeading('Awards and Achievements:'));
+    for (const award of data.awards) {
+      children.push(createBullet(award));
+    }
+  }
+
+  // 9. Professional Experience
+  if (data.experience && data.experience.length > 0) {
+    children.push(createSectionHeading('Professional Experience:'));
+    data.experience.forEach((exp, idx) => {
+      const projTitle = exp.projectNumber || `Project ${idx + 1}`;
+      children.push(createSubHeading(exp.projectName ? `${projTitle}: ${exp.projectName}` : projTitle));
+
+      const duration = [exp.startDate, exp.endDate].filter(Boolean).join(' to ');
+      if (exp.company) children.push(createKeyValue('Client:', exp.company, true));
+      if (exp.role) children.push(createKeyValue('Role:', exp.role, true));
+      if (duration) children.push(createKeyValue('Duration:', duration, true));
+      if (exp.environment) children.push(createKeyValue('Environment:', exp.environment, true));
+      if (exp.domain) children.push(createKeyValue('Domain:', exp.domain, true));
+      if (exp.onsiteOffshore) children.push(createKeyValue('Location:', exp.onsiteOffshore, true));
+      if (exp.description) children.push(createBullet(`Project Description: ${exp.description}`));
+
+      if (exp.workingEnvironment && exp.workingEnvironment.length > 0) {
+        children.push(createSubHeading('Working Environment:'));
+        for (const we of exp.workingEnvironment) {
+          children.push(createBullet(we));
+        }
+      }
+
+      if (exp.bullets && exp.bullets.length > 0) {
+        children.push(createSubHeading('Responsibilities:'));
+        for (const b of exp.bullets) {
+          children.push(createBullet(b));
+        }
+      }
+    });
+  }
+
+  // 10. Professional Certifications
+  if (data.certifications && data.certifications.length > 0) {
+    children.push(createSectionHeading('Professional Certifications:'));
+    for (const cert of data.certifications) {
+      children.push(createBullet(cert));
+    }
+  }
+
+  // 11. Additional Sections
+  if (data.additionalSections && data.additionalSections.length > 0) {
+    for (const sec of data.additionalSections) {
+      if (sec.title && sec.items?.length > 0) {
+        children.push(createSectionHeading(sec.title));
+        for (const item of sec.items) {
+          children.push(createBullet(item));
+        }
+      }
     }
   }
 

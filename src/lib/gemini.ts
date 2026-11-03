@@ -24,6 +24,7 @@ export const RESUME_JSON_SCHEMA = {
   properties: {
     fullName: { type: "STRING" },
     targetRole: { type: "STRING" },
+    contactInfo: { type: "OBJECT", properties: { email: { type: "STRING" }, phone: { type: "STRING" }, location: { type: "STRING" }, linkedin: { type: "STRING" }, github: { type: "STRING" } } },
     professionalSummary: {
       type: "ARRAY",
       items: { type: "STRING" },
@@ -77,6 +78,10 @@ export const RESUME_JSON_SCHEMA = {
         type: "OBJECT",
         properties: {
           projectNumber: { type: "STRING", description: "e.g., 'Project 1', 'Project 2'" },
+          projectName: { type: "STRING", description: "Original project title" },
+          description: { type: "STRING", description: "Full project description and business context" },
+          domain: { type: "STRING", description: "Business domain or vertical" },
+          onsiteOffshore: { type: "STRING", description: "Separate onsite/offshore dates and locations" },
           company: { type: "STRING", description: "Client or Employer Name" },
           role: { type: "STRING", description: "Role or Job Title" },
           startDate: { type: "STRING", description: "Full duration string, e.g., 'September 2015 to till date'" },
@@ -99,6 +104,18 @@ export const RESUME_JSON_SCHEMA = {
       type: "ARRAY",
       items: { type: "STRING" },
       description: "All external certifications, vendor credentials, and accreditations. Each bullet MUST include the full certification name, issuing vendor/organization, and validity or expiry date if mentioned (e.g. 'Snowflake SnowPro Advanced: Data Engineer – Snowflake (Valid through May-2028)'). Never omit any certification or vendor."
+    },
+    additionalSections: {
+      type: "ARRAY",
+      description: "Any custom, domain-specific, or unmapped sections found in the source resume (e.g., Publications, Languages, Patents, Visa Status, Volunteer Experience, Trainings, Client Commendations). Extract every unmapped section here with its title and bullet items so no data is dropped.",
+      items: {
+        type: "OBJECT",
+        properties: {
+          title: { type: "STRING" },
+          items: { type: "ARRAY", items: { type: "STRING" } }
+        },
+        required: ["title", "items"]
+      }
     }
   },
   required: ["fullName", "targetRole", "professionalSummary", "education", "skills", "experience"]
@@ -106,10 +123,11 @@ export const RESUME_JSON_SCHEMA = {
 
 export const FREE_FLASH_MODELS = [
   'gemini-3.5-flash',
-  'gemini-flash-latest',
   'gemini-3.5-flash-lite',
   'gemini-flash-lite-latest',
-  'gemini-3.8-flash'
+  'gemini-3.8-flash',
+  'gemini-3.7-flash',
+  'gemini-flash-latest'
 ];
 
 export function sanitizeApiKey(key: string): string {
@@ -126,10 +144,32 @@ export function extractNameFromFilename(filename: string): string {
 export async function resolveAvailableModel(rawKey: string): Promise<{ name: string; apiVersion: string }> {
   const apiKey = sanitizeApiKey(rawKey);
 
+  try {
+    const listRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
+      { signal: AbortSignal.timeout(10000) }
+    );
+    if (listRes.ok) {
+      const data = await listRes.json();
+      const available = (data.models || [])
+        .filter((m: any) => m.supportedGenerationMethods?.includes('generateContent'))
+        .map((m: any) => m.name.replace('models/', ''));
+
+      for (const pref of FREE_FLASH_MODELS) {
+        if (available.includes(pref)) {
+          return { name: pref, apiVersion: 'v1beta' };
+        }
+      }
+    }
+  } catch {
+    // fallback to sequential test
+  }
+
   for (const model of FREE_FLASH_MODELS) {
     try {
       const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}?key=${apiKey}`
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}?key=${apiKey}`,
+        { signal: AbortSignal.timeout(5000) }
       );
       if (res.ok) {
         return { name: model, apiVersion: 'v1beta' };
@@ -139,7 +179,7 @@ export async function resolveAvailableModel(rawKey: string): Promise<{ name: str
     }
   }
 
-  return { name: 'gemini-3.8-flash', apiVersion: 'v1beta' };
+  return { name: 'gemini-3.5-flash', apiVersion: 'v1beta' };
 }
 
 export function scrubPersonalInfo(text: string): string {
@@ -190,18 +230,19 @@ CRITICAL RULES:
 4. PROJECT FORMAT: Every work experience or project entry must map to Project 1, Project 2, etc., capturing Client ('company'), Role ('role'), Duration ('startDate'), Environment ('environment'), Working Environment ('workingEnvironment' if present), and Responsibilities ('bullets').
 5. CANDIDATE NAME: Extract the candidate's real name, or fallback to "${inferredName}".
 6. ZERO FABRICATION: Only extract facts present in the candidate's source text.
-${removePersonalInfo ? '7. PRIVACY & ANONYMIZATION: The user explicitly requires personal contact details (phone numbers, emails, addresses, personal URLs) to be omitted.' : ''}
+7. UNMAPPED SECTIONS (ZERO DATA LOSS): If the resume contains sections that do not map to the standard sections (such as Publications, Languages, Patents, Visa Status, Volunteer Experience, Trainings), you MUST extract them into 'additionalSections'. Never discard any section.
+${removePersonalInfo ? '8. PRIVACY & ANONYMIZATION: The user explicitly requires personal contact details (phone numbers, emails, addresses, personal URLs) to be omitted.' : ''}
 `;
 
   const userPrompt = `
 TARGET BENCHMARK FORMAT:
 """
-${TECNICS_STANDARD_BENCHMARK}
+${targetFormatText?.trim() || TECNICS_STANDARD_BENCHMARK}
 """
 
 CANDIDATE SOURCE RESUME (Filename: ${filename || 'resume.docx'}):
 """
-${candidateText.slice(0, 30000)}
+${candidateText}
 """
 `;
 
@@ -221,9 +262,10 @@ ${candidateText.slice(0, 30000)}
             responseMimeType: 'application/json',
             responseSchema: RESUME_JSON_SCHEMA,
             temperature: 0.1,
+            maxOutputTokens: 8192,
           },
         }),
-        signal: AbortSignal.timeout(25000),
+        signal: AbortSignal.timeout(60000),
       });
 
       const resData = await response.json();
@@ -262,6 +304,10 @@ ${candidateText.slice(0, 30000)}
         awards: parsed.awards || [],
         experience: (parsed.experience || []).map((exp: any, idx: number) => ({
           projectNumber: exp.projectNumber || `Project ${idx + 1}`,
+          projectName: exp.projectName || '',
+          description: exp.description || '',
+          domain: exp.domain || '',
+          onsiteOffshore: exp.onsiteOffshore || '',
           company: exp.company || '',
           role: exp.role || '',
           startDate: exp.startDate || '',
@@ -270,6 +316,7 @@ ${candidateText.slice(0, 30000)}
           bullets: exp.bullets || [],
         })),
         certifications: parsed.certifications || [],
+        additionalSections: parsed.additionalSections || [],
       };
     } catch (err: any) {
       lastError = err;

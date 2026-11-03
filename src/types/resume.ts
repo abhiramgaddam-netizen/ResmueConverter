@@ -22,6 +22,10 @@ export type SkillCategory = TechnicalSkillCategory;
 
 export interface ProjectExperience {
   projectNumber?: string;        // e.g., "Project 1", "Project 2"
+  projectName?: string;
+  description?: string;
+  domain?: string;
+  onsiteOffshore?: string;
   company: string;               // Client Name
   role: string;                  // Role Title
   startDate: string;             // Duration (or start date)
